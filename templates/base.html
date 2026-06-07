@@ -1,0 +1,268 @@
+<!DOCTYPE html>
+<html lang="fr" data-theme="light" data-lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}Gestion de Contacts{% endblock %}</title>
+    <!-- ⚡ Anti-FOUC: apply saved theme BEFORE any CSS renders -->
+    <script>
+        (function() {
+            var t = localStorage.getItem('theme') || 'light';
+            var d = localStorage.getItem('density') || 'normal';
+            var l = localStorage.getItem('lang') || 'fr';
+            document.documentElement.setAttribute('data-theme', t);
+            document.documentElement.setAttribute('data-density', d);
+            document.documentElement.setAttribute('data-lang', l);
+            if (l === 'ar') document.documentElement.setAttribute('dir', 'rtl');
+        })();
+    </script>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+{% if session.get('logged_in') %}
+<nav class="navbar">
+    <div class="nav-brand">
+        <i data-lucide="book-user" class="nav-lucide-icon"></i>
+        <span data-i18n="app_title">Gestion de Contacts</span>
+    </div>
+    <div class="nav-links">
+        <a href="{{ url_for('contacts') }}" class="nav-link {% if request.endpoint == 'contacts' %}active{% endif %}">
+            <i data-lucide="users" style="width:15px;height:15px;"></i> <span data-i18n="nav_contacts">Contacts</span>
+        </a>
+        <a href="{{ url_for('appointments') }}" class="nav-link {% if request.endpoint == 'appointments' %}active{% endif %}">
+            <i data-lucide="calendar-days" style="width:15px;height:15px;"></i> <span data-i18n="nav_rdv">Rendez-vous</span>
+        </a>
+        <!-- <a href="{{ url_for('api_docs') }}" class="nav-link {% if request.endpoint == 'api_docs' %}active{% endif %}">
+            <i data-lucide="code-2" style="width:15px;height:15px;"></i> <span>API</span>
+        </a> -->
+        <a href="{{ url_for('admins') }}" class="nav-link {% if request.endpoint == 'admins' %}active{% endif %}">
+            <i data-lucide="shield-user" style="width:15px;height:15px;"></i> <span data-i18n="nav_admins">Admins</span>
+        </a>
+
+        <!-- Settings button -->
+        <button class="nav-icon-btn" id="settings-btn" title="Paramètres" onclick="toggleSettings()">
+            <i data-lucide="settings" style="width:17px;height:17px;"></i>
+        </button>
+
+        <a href="{{ url_for('logout') }}" class="nav-link logout">
+            <i data-lucide="log-out" style="width:15px;height:15px;"></i> <span data-i18n="nav_logout">Déconnexion</span>
+        </a>
+    </div>
+</nav>
+
+<!-- Settings Panel (slide-in) -->
+<div id="settings-panel" class="settings-panel">
+    <div class="settings-header">
+        <span><i data-lucide="settings" style="width:16px;height:16px;margin-right:.4rem;"></i><span data-i18n="settings_title">Paramètres</span></span>
+        <button onclick="toggleSettings()" class="settings-close"><i data-lucide="x" style="width:16px;height:16px;"></i></button>
+    </div>
+
+    <!-- Dark Mode -->
+    <div class="settings-section">
+        <div class="settings-label" data-i18n="settings_theme">Thème</div>
+        <div class="theme-toggle-row">
+            <button class="theme-btn active" id="theme-light" onclick="setTheme('light')">
+                <i data-lucide="sun" style="width:15px;height:15px;"></i> <span data-i18n="theme_light">Clair</span>
+            </button>
+            <button class="theme-btn" id="theme-dark" onclick="setTheme('dark')">
+                <i data-lucide="moon" style="width:15px;height:15px;"></i> <span data-i18n="theme_dark">Sombre</span>
+            </button>
+        </div>
+    </div>
+
+    <!-- Language -->
+    <div class="settings-section">
+        <div class="settings-label" data-i18n="settings_lang">Langue</div>
+        <div class="lang-grid">
+            <button class="lang-btn active" id="lang-fr" onclick="setLang('fr')">🇫🇷 Français</button>
+            <button class="lang-btn" id="lang-en" onclick="setLang('en')">🇬🇧 English</button>
+            <button class="lang-btn" id="lang-ar" onclick="setLang('ar')">🇲🇦 العربية</button>
+        </div>
+    </div>
+
+    <!-- Table density -->
+    <div class="settings-section">
+        <div class="settings-label" data-i18n="settings_density">Densité du tableau</div>
+        <div class="theme-toggle-row">
+            <button class="theme-btn" id="density-compact" onclick="setDensity('compact')">
+                <i data-lucide="align-justify" style="width:14px;height:14px;"></i> <span data-i18n="density_compact">Compact</span>
+            </button>
+            <button class="theme-btn active" id="density-normal" onclick="setDensity('normal')">
+                <i data-lucide="list" style="width:14px;height:14px;"></i> <span data-i18n="density_normal">Normal</span>
+            </button>
+            <button class="theme-btn" id="density-comfy" onclick="setDensity('comfy')">
+                <i data-lucide="layout-list" style="width:14px;height:14px;"></i> <span data-i18n="density_comfy">Aéré</span>
+            </button>
+        </div>
+    </div>
+
+    <!-- Suggestions -->
+</div><!-- /#settings-panel -->
+
+<div id="settings-overlay" class="settings-overlay" onclick="toggleSettings()"></div>
+{% endif %}
+
+<main class="main-content">
+    {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+            {% for category, message in messages %}
+                <div class="alert alert-{{ category }}">{{ message }}</div>
+            {% endfor %}
+        {% endif %}
+    {% endwith %}
+
+    {% block content %}{% endblock %}
+</main>
+
+{% block scripts %}{% endblock %}
+
+<!-- Global i18n + theme + settings script -->
+<script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
+<script>
+// ════════════════════════════════════════
+// TRANSLATIONS
+// ════════════════════════════════════════
+const TRANSLATIONS = {
+  fr: {
+    app_title:"Gestion de Contacts", nav_contacts:"Contacts", nav_rdv:"Rendez-vous",
+    nav_admins:"Admins", nav_logout:"Déconnexion", settings_title:"Paramètres",
+    settings_theme:"Thème", theme_light:"Clair", theme_dark:"Sombre",
+    settings_lang:"Langue", settings_density:"Densité du tableau",
+    density_compact:"Compact", density_normal:"Normal", density_comfy:"Aéré",
+    settings_suggestions:"Fonctionnalités suggérées",
+    sug_stats:"Tableau de bord statistiques", sug_notif:"Rappels RDV par SMS / email",
+    sug_print:"Impression fiche contact", sug_groups:"Groupes & étiquettes",
+    sug_api:"API REST publique", sug_photo:"Photo de profil contact",
+    sug_gcal:"Sync Google Calendar",
+    contacts_title:"Mes Contacts", btn_import:"Importer", btn_export:"Exporter CSV",
+    btn_new:"Nouveau contact", search_placeholder:"Rechercher par nom, email ou téléphone…",
+    th_id:"#", th_name:"Nom", th_email:"Email", th_phone:"Téléphone",
+    th_category:"Catégorie", th_actions:"Actions",
+    filter_all:"Tous", bulk_delete:"Supprimer la sélection",
+    select_all:"Tout sélectionner",
+    confirm_bulk:"Supprimer {n} contact(s) sélectionné(s) ?",
+    modal_add:"Nouveau contact", modal_edit:"Modifier le contact",
+    modal_delete:"Confirmer la suppression", btn_cancel:"Annuler", btn_save:"Enregistrer",
+    btn_add:"Ajouter le contact", btn_delete:"Supprimer",
+    label_name:"Nom complet", label_email:"Adresse e-mail", label_phone:"Numéro de téléphone",
+    label_category:"Catégorie", label_company:"Entreprise", label_fonction:"Fonction",
+    label_address:"Adresse",
+  },
+  en: {
+    app_title:"Contact Manager", nav_contacts:"Contacts", nav_rdv:"Appointments",
+    nav_admins:"Admins", nav_logout:"Logout", settings_title:"Settings",
+    settings_theme:"Theme", theme_light:"Light", theme_dark:"Dark",
+    settings_lang:"Language", settings_density:"Table density",
+    density_compact:"Compact", density_normal:"Normal", density_comfy:"Comfortable",
+    settings_suggestions:"Suggested features",
+    sug_stats:"Statistics dashboard", sug_notif:"Appointment reminders (SMS/email)",
+    sug_print:"Print contact sheet", sug_groups:"Groups & tags",
+    sug_api:"Public REST API", sug_photo:"Contact profile photo",
+    sug_gcal:"Google Calendar sync",
+    contacts_title:"My Contacts", btn_import:"Import", btn_export:"Export CSV",
+    btn_new:"New contact", search_placeholder:"Search by name, email or phone…",
+    th_id:"#", th_name:"Name", th_email:"Email", th_phone:"Phone",
+    th_category:"Category", th_actions:"Actions",
+    filter_all:"All", bulk_delete:"Delete selected",
+    select_all:"Select all",
+    confirm_bulk:"Delete {n} selected contact(s)?",
+    modal_add:"New contact", modal_edit:"Edit contact",
+    modal_delete:"Confirm deletion", btn_cancel:"Cancel", btn_save:"Save",
+    btn_add:"Add contact", btn_delete:"Delete",
+    label_name:"Full name", label_email:"Email address", label_phone:"Phone number",
+    label_category:"Category", label_company:"Company", label_fonction:"Role",
+    label_address:"Address",
+  },
+  ar: {
+    app_title:"إدارة جهات الاتصال", nav_contacts:"جهات الاتصال", nav_rdv:"المواعيد",
+    nav_admins:"المشرفون", nav_logout:"تسجيل الخروج", settings_title:"الإعدادات",
+    settings_theme:"المظهر", theme_light:"فاتح", theme_dark:"داكن",
+    settings_lang:"اللغة", settings_density:"كثافة الجدول",
+    density_compact:"مضغوط", density_normal:"عادي", density_comfy:"مريح",
+    settings_suggestions:"ميزات مقترحة",
+    sug_stats:"لوحة إحصاءات", sug_notif:"تذكيرات المواعيد (SMS / بريد)",
+    sug_print:"طباعة بطاقة الاتصال", sug_groups:"مجموعات وعلامات",
+    sug_api:"واجهة REST عامة", sug_photo:"صورة الملف الشخصي",
+    sug_gcal:"مزامنة Google Calendar",
+    contacts_title:"جهات اتصالي", btn_import:"استيراد", btn_export:"تصدير CSV",
+    btn_new:"جهة اتصال جديدة", search_placeholder:"البحث بالاسم أو البريد أو الهاتف…",
+    th_id:"#", th_name:"الاسم", th_email:"البريد", th_phone:"الهاتف",
+    th_category:"الفئة", th_actions:"إجراءات",
+    filter_all:"الكل", bulk_delete:"حذف المحدد",
+    select_all:"تحديد الكل",
+    confirm_bulk:"حذف {n} جهة اتصال محددة؟",
+    modal_add:"جهة اتصال جديدة", modal_edit:"تعديل جهة الاتصال",
+    modal_delete:"تأكيد الحذف", btn_cancel:"إلغاء", btn_save:"حفظ",
+    btn_add:"إضافة", btn_delete:"حذف",
+    label_name:"الاسم الكامل", label_email:"البريد الإلكتروني", label_phone:"رقم الهاتف",
+    label_category:"الفئة", label_company:"الشركة", label_fonction:"الوظيفة",
+    label_address:"العنوان",
+  }
+};
+
+let LANG = localStorage.getItem('lang') || 'fr';
+let THEME = localStorage.getItem('theme') || 'light';
+let DENSITY = localStorage.getItem('density') || 'normal';
+
+function t(key) {
+  return (TRANSLATIONS[LANG] && TRANSLATIONS[LANG][key]) || TRANSLATIONS.fr[key] || key;
+}
+
+function applyTranslations() {
+  document.querySelectorAll('[data-i18n]').forEach(el => {
+    const key = el.getAttribute('data-i18n');
+    el.textContent = t(key);
+  });
+  document.querySelectorAll('[data-i18n-placeholder]').forEach(el => {
+    el.placeholder = t(el.getAttribute('data-i18n-placeholder'));
+  });
+  const html = document.documentElement;
+  if (LANG === 'ar') { html.setAttribute('dir','rtl'); html.setAttribute('lang','ar'); }
+  else { html.setAttribute('dir','ltr'); html.setAttribute('lang', LANG); }
+}
+
+function applyTheme() {
+  document.documentElement.setAttribute('data-theme', THEME);
+  document.getElementById('theme-light')?.classList.toggle('active', THEME==='light');
+  document.getElementById('theme-dark')?.classList.toggle('active', THEME==='dark');
+}
+
+function applyDensity() {
+  document.documentElement.setAttribute('data-density', DENSITY);
+  ['compact','normal','comfy'].forEach(d => {
+    document.getElementById('density-'+d)?.classList.toggle('active', DENSITY===d);
+  });
+}
+
+function setTheme(t) { THEME=t; localStorage.setItem('theme',t); applyTheme(); }
+function setLang(l) {
+  LANG=l; localStorage.setItem('lang',l);
+  ['fr','en','ar'].forEach(x => document.getElementById('lang-'+x)?.classList.toggle('active', x===l));
+  applyTranslations();
+  // re-apply page-specific dynamic labels
+  if(typeof applyPageTranslations === 'function') applyPageTranslations();
+}
+function setDensity(d) { DENSITY=d; localStorage.setItem('density',d); applyDensity(); }
+
+function toggleSettings() {
+  const p = document.getElementById('settings-panel');
+  const o = document.getElementById('settings-overlay');
+  if (!p) return;
+  const open = p.classList.toggle('open');
+  o.classList.toggle('open', open);
+}
+
+// Init on load
+document.addEventListener('DOMContentLoaded', () => {
+  lucide.createIcons();
+  applyTheme();
+  applyDensity();
+  applyTranslations();
+  ['fr','en','ar'].forEach(x => document.getElementById('lang-'+x)?.classList.toggle('active', x===LANG));
+  document.getElementById('theme-light')?.classList.toggle('active', THEME==='light');
+  document.getElementById('theme-dark')?.classList.toggle('active', THEME==='dark');
+  if(typeof applyPageTranslations === 'function') applyPageTranslations();
+});
+</script>
+</body>
+</html>

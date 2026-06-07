@@ -1,0 +1,1272 @@
+{% extends "base.html" %}
+{% block title %}Agenda RDV{% endblock %}
+
+{% block content %}
+
+<!-- ── PAGE HEADER ─────────────────────────── -->
+<div class="page-header">
+    <div>
+        <h1>
+            <i data-lucide="calendar-days" style="width:24px;height:24px;vertical-align:-4px;margin-right:.35rem;color:var(--primary);"></i>
+            Agenda des Rendez-vous
+        </h1>
+        <p class="subtitle" id="week-label">Chargement…</p>
+    </div>
+    <div class="page-actions">
+        <button class="btn btn-secondary" id="btn-prev" onclick="shiftWeek(-1)">
+            <i data-lucide="chevron-left" style="width:15px;height:15px;vertical-align:-2px;"></i> Préc.
+        </button>
+        <button class="btn btn-secondary" id="btn-today" onclick="goToday()">Aujourd'hui</button>
+        <button class="btn btn-secondary" id="btn-next" onclick="shiftWeek(1)">
+            Suiv. <i data-lucide="chevron-right" style="width:15px;height:15px;vertical-align:-2px;"></i>
+        </button>
+        {% if gcal_configured %}
+        {% if gcal_connected %}
+        <a href="/gcal/disconnect" class="btn btn-secondary" style="color:#16a34a;border-color:#16a34a;">
+            <svg viewBox="0 0 24 24" fill="none" style="width:14px;height:14px;vertical-align:-2px;" xmlns="http://www.w3.org/2000/svg"><rect x="3" y="3" width="18" height="18" rx="2" stroke="#16a34a" stroke-width="2"/><path d="M3 8h18" stroke="#16a34a" stroke-width="2"/><path d="M8 3v5M16 3v5" stroke="#16a34a" stroke-width="2" stroke-linecap="round"/></svg>
+            Google Calendar ✓
+        </a>
+        {% else %}
+        <a href="/gcal/connect" class="btn btn-secondary">
+            <svg viewBox="0 0 24 24" fill="none" style="width:14px;height:14px;vertical-align:-2px;" xmlns="http://www.w3.org/2000/svg"><rect x="3" y="3" width="18" height="18" rx="2" stroke="#4285F4" stroke-width="2"/><path d="M3 8h18" stroke="#4285F4" stroke-width="2"/><path d="M8 3v5M16 3v5" stroke="#4285F4" stroke-width="2" stroke-linecap="round"/></svg>
+            Connecter Google Calendar
+        </a>
+        {% endif %}
+        {% endif %}
+    </div>
+</div>
+
+<!-- ── CALENDAR ──────────────────────────────── -->
+<div class="ag-wrap">
+
+    <!-- Header row: gutter + day names -->
+    <div class="ag-head">
+        <div class="ag-gutter-cell ag-gutter-head"></div>
+        <div class="ag-days-head" id="ag-days-head"></div>
+    </div>
+
+    <!-- Body: gutter + scrollable columns -->
+    <div class="ag-body-scroll">
+        <div class="ag-body-row">
+            <div class="ag-gutter-col" id="ag-gutter-col"></div>
+            <div class="ag-day-cols" id="ag-day-cols"></div>
+        </div>
+    </div>
+
+    <!-- Loading overlay -->
+    <div class="ag-loading" id="ag-loading">
+        <i data-lucide="loader" style="width:22px;height:22px;animation:ag-spin 1s linear infinite;"></i>
+        Chargement…
+    </div>
+</div>
+
+<!-- ══════════════════════════════════════════════
+     BOOK RDV MODAL
+══════════════════════════════════════════════ -->
+<div id="book-modal" class="rdv-modal-bg" onclick="bgClose(event,'book-modal')">
+    <div class="rdv-modal">
+
+        <!-- Modal header -->
+        <div class="rdv-modal-head rdv-modal-head--primary">
+            <span>
+                <i data-lucide="calendar-plus" style="width:16px;height:16px;vertical-align:-2px;margin-right:.3rem;"></i>
+                Nouveau rendez-vous
+            </span>
+            <button class="rdv-modal-x" onclick="closeRdvModal('book-modal')">
+                <i data-lucide="x" style="width:16px;height:16px;"></i>
+            </button>
+        </div>
+
+        <!-- Date / time chips -->
+        <div class="rdv-chips" id="book-chips"></div>
+
+        <!-- Form body -->
+        <div class="rdv-modal-body">
+
+            <div class="rdv-field">
+                <label class="rdv-label" for="bk-contact-search">
+                    <i data-lucide="user" style="width:13px;height:13px;"></i> Contact <span style="color:var(--danger)">*</span>
+                </label>
+                <!-- Hidden real select keeps the selected value -->
+                <select id="bk-contact" style="display:none;">
+                    <option value=""></option>
+                    {% for c in contacts %}
+                    <option value="{{ c.id }}"
+                        data-name="{{ c.name|lower }}"
+                        data-label="{{ c.name }}{% if c.company %} — {{ c.company }}{% endif %}{% if c.category %} ({{ c.category }}){% endif %}">
+                        {{ c.name }}
+                    </option>
+                    {% endfor %}
+                </select>
+                <!-- Searchable picker -->
+                <div class="rdv-contact-picker" id="bk-contact-picker">
+                    <div class="rdv-contact-input-wrap">
+                        <i data-lucide="search" class="rdv-contact-search-icon" style="width:13px;height:13px;"></i>
+                        <input type="text" id="bk-contact-search" class="rdv-input rdv-contact-search"
+                               placeholder="Rechercher un contact…"
+                               autocomplete="off"
+                               oninput="filterContactPicker(this.value)"
+                               onfocus="openContactPicker()">
+                        <button type="button" class="rdv-contact-clear" id="bk-contact-clear" onclick="clearContactPicker()" style="display:none;">
+                            <i data-lucide="x" style="width:13px;height:13px;"></i>
+                        </button>
+                    </div>
+                    <div class="rdv-contact-dropdown" id="bk-contact-dropdown" style="display:none;"></div>
+                </div>
+            </div>
+
+            <div class="rdv-field">
+                <label class="rdv-label" for="bk-title">
+                    <i data-lucide="file-text" style="width:13px;height:13px;"></i> Motif / Titre
+                </label>
+                <input id="bk-title" class="rdv-input" type="text" placeholder="Ex : Consultation de suivi, Réunion…">
+            </div>
+
+            <div class="rdv-field">
+                <label class="rdv-label" for="bk-notes">
+                    <i data-lucide="sticky-note" style="width:13px;height:13px;"></i> Notes
+                </label>
+                <textarea id="bk-notes" class="rdv-input rdv-textarea" rows="3" placeholder="Informations complémentaires…"></textarea>
+            </div>
+
+            <!-- 🔔 Rappels -->
+            <div class="rdv-field" style="border-top:1px solid var(--border);padding-top:.85rem;">
+                <div class="rdv-label" style="margin-bottom:.55rem;">
+                    <i data-lucide="bell" style="width:13px;height:13px;"></i> Rappels (envoyés immédiatement)
+                </div>
+                <div style="display:flex;flex-direction:column;gap:.4rem;">
+                    <label class="rdv-check-row">
+                        <input type="checkbox" id="bk-reminder-email">
+                        <span>Envoyer rappel par e-mail</span>
+                    </label>
+                    <label class="rdv-check-row">
+                        <input type="checkbox" id="bk-reminder-sms">
+                        <span>Envoyer rappel par WhatsApp/SMS</span>
+                    </label>
+                </div>
+            </div>
+
+            <!-- 📅 Google Calendar -->
+            <div class="rdv-field" id="gcal-sync-row" style="{% if not gcal_configured %}display:none;{% endif %}">
+                <label class="rdv-check-row" style="gap:.6rem;">
+                    <input type="checkbox" id="bk-gcal" {% if not gcal_connected %}disabled title="Connectez Google Calendar d'abord"{% endif %}>
+                    <span style="display:flex;align-items:center;gap:.4rem;">
+                        <svg viewBox="0 0 24 24" fill="none" style="width:15px;height:15px;" xmlns="http://www.w3.org/2000/svg">
+                            <rect x="3" y="3" width="18" height="18" rx="2" stroke="#4285F4" stroke-width="2"/>
+                            <path d="M3 8h18" stroke="#4285F4" stroke-width="2"/>
+                            <path d="M8 3v5M16 3v5" stroke="#4285F4" stroke-width="2" stroke-linecap="round"/>
+                        </svg>
+                        Ajouter à Google Calendar
+                        {% if not gcal_connected and gcal_configured %}
+                        <a href="/gcal/connect" style="font-size:.75rem;color:var(--primary);margin-left:.3rem;">→ Connecter</a>
+                        {% elif gcal_connected %}
+                        <span style="font-size:.75rem;color:#16a34a;background:#dcfce7;padding:.1rem .45rem;border-radius:20px;">✓ Connecté</span>
+                        {% endif %}
+                    </span>
+                </label>
+            </div>
+
+            <div id="bk-feedback" class="rdv-feedback" style="display:none;"></div>
+
+        </div>
+
+        <!-- Footer -->
+        <div class="rdv-modal-foot" style="justify-content:flex-end;padding:1rem 1.4rem 1.4rem;">
+            <button class="btn btn-secondary" onclick="closeRdvModal('book-modal')">Annuler</button>
+            <button class="btn btn-primary" onclick="submitBook()">
+                <i data-lucide="check" style="width:14px;height:14px;vertical-align:-2px;"></i>
+                Confirmer le RDV
+            </button>
+        </div>
+
+    </div>
+</div>
+
+<!-- ══════════════════════════════════════════════
+     DETAIL / CANCEL MODAL
+══════════════════════════════════════════════ -->
+<div id="detail-modal" class="rdv-modal-bg" onclick="bgClose(event,'detail-modal')">
+    <div class="rdv-modal rdv-modal--sm">
+
+        <div class="rdv-modal-head rdv-detail-head">
+            <span>
+                <i data-lucide="calendar-check" style="width:16px;height:16px;vertical-align:-2px;margin-right:.35rem;"></i>
+                Détail du rendez-vous
+            </span>
+            <button class="rdv-modal-x" onclick="closeRdvModal('detail-modal')">
+                <i data-lucide="x" style="width:16px;height:16px;"></i>
+            </button>
+        </div>
+
+        <div class="rdv-modal-body" id="detail-rows" style="padding:0;"></div>
+
+        <!-- Action buttons row -->
+        <div class="rdv-detail-actions">
+            <button class="rdv-action-btn rdv-action-btn--email" onclick="sendReminderFromDetail('email')">
+                <i data-lucide="mail" style="width:15px;height:15px;"></i>
+                <span>Rappel email</span>
+            </button>
+            <button class="rdv-action-btn rdv-action-btn--wa" onclick="sendReminderFromDetail('sms')">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor" style="flex-shrink:0;"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347z"/><path d="M12 0C5.373 0 0 5.373 0 12c0 2.127.558 4.126 1.532 5.856L0 24l6.335-1.508A11.933 11.933 0 0012 24c6.627 0 12-5.373 12-12S18.627 0 12 0zm0 21.818a9.797 9.797 0 01-5.003-1.371l-.36-.214-3.727.978.994-3.632-.234-.373A9.778 9.778 0 012.182 12C2.182 6.57 6.57 2.182 12 2.182S21.818 6.57 21.818 12 17.43 21.818 12 21.818z"/></svg>
+                <span>Rappel WA</span>
+            </button>
+        </div>
+
+        <!-- Cancel link — subtle, separated -->
+        <div class="rdv-detail-cancel-row">
+            <button class="rdv-cancel-link" onclick="cancelCurrentAppt()">
+                <i data-lucide="trash-2" style="width:13px;height:13px;"></i>
+                Annuler ce rendez-vous
+            </button>
+        </div>
+
+    </div>
+</div>
+
+<!-- ══════════════════════════════════════════════
+     SCOPED STYLES
+══════════════════════════════════════════════ -->
+<style>
+/* ══════════════════════════════════════════════
+   CALENDAR - LIGHT THEME
+══════════════════════════════════════════════ */
+
+/* Shell */
+.ag-wrap {
+    position: relative;
+    border: 1.5px solid #e2e8f0;
+    border-radius: 12px;
+    background: #ffffff;
+    box-shadow: 0 4px 16px rgba(0,0,0,.07);
+    overflow: hidden;
+    margin-top: 1.25rem;
+}
+
+/* Loading overlay */
+.ag-loading {
+    display: none;
+    position: absolute;
+    inset: 0;
+    background: rgba(255,255,255,.82);
+    z-index: 5;
+    align-items: center;
+    justify-content: center;
+    gap: .6rem;
+    font-size: .9rem;
+    color: #64748b;
+    font-weight: 500;
+}
+.ag-loading.visible { display: flex; }
+@keyframes ag-spin { to { transform: rotate(360deg); } }
+
+/* Header row */
+.ag-head {
+    display: flex;
+    border-bottom: 2px solid #e2e8f0;
+    background: #f8fafc;
+    position: sticky;
+    top: 0;
+    z-index: 4;
+}
+.ag-gutter-cell { width: 58px; flex-shrink: 0; }
+.ag-gutter-head { border-right: 1.5px solid #e2e8f0; }
+.ag-days-head {
+    flex: 1;
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+}
+.ag-day-th {
+    text-align: center;
+    padding: .7rem .25rem .55rem;
+    border-left: 1px solid #e2e8f0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    cursor: default;
+    user-select: none;
+}
+.ag-day-th:first-child { border-left: none; }
+.ag-dayname {
+    font-size: .65rem;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: .08em;
+    color: #94a3b8;
+}
+.ag-daynum {
+    width: 30px; height: 30px;
+    border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-size: .98rem; font-weight: 700;
+    color: #1e293b;
+}
+.ag-day-th.ag-today .ag-dayname { color: #4f46e5; }
+.ag-day-th.ag-today .ag-daynum  { background: #4f46e5; color: #fff; box-shadow: 0 2px 8px rgba(79,70,229,.35); }
+
+/* Body */
+/* .ag-body-scroll { overflow-y: auto; max-height: 530px; } */
+.ag-body-scroll {
+    overflow: visible;
+    max-height: none;
+}
+.ag-body-row    { display: flex; }
+
+/* Time gutter */
+.ag-gutter-col {
+    width: 58px;
+    flex-shrink: 0;
+    border-right: 1.5px solid #e2e8f0;
+    background: #f8fafc;
+    display: flex;
+    flex-direction: column;
+}
+.ag-gutter-slot {
+    height: 44px; flex-shrink: 0;
+    font-size: .66rem;
+    font-weight: 600;
+    color: #94a3b8;
+    text-align: right;
+    padding-right: 8px;
+    padding-top: 4px;
+    letter-spacing: -.01em;
+}
+
+/* Day columns grid */
+.ag-day-cols {
+    flex: 1;
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+}
+.ag-col {
+    display: flex;
+    flex-direction: column;
+    border-left: 1px solid #e2e8f0;
+    background: #ffffff;
+}
+.ag-col:first-child { border-left: none; }
+.ag-col.ag-today-col { background: #fafaf9; }
+
+/* ── SLOTS ── */
+.ag-slot {
+    height: 44px;
+    flex-shrink: 0;
+    border-top: 1px solid #f1f5f9;
+    padding: 2px 4px;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    overflow: hidden;
+    font-size: .7rem;
+    transition: background .1s;
+    position: relative;
+    box-sizing: border-box;
+}
+/* Hour lines slightly stronger */
+.ag-slot:nth-child(odd) { border-top-color: #e8edf2; }
+
+.ag-slot.ag-free {
+    cursor: pointer;
+    background: transparent;
+}
+.ag-slot.ag-free:hover {
+    background: #eef2ff;
+}
+
+.ag-slot.ag-past {
+    cursor: default;
+    background: #fafafa;
+}
+.ag-slot.ag-past:nth-child(odd) { background: #f7f8fa; }
+
+.ag-slot.ag-booked {
+    background: #4f46e5;
+    border-radius: 5px;
+    margin: 1px 3px;
+    height: 42px;
+    color: #fff;
+    cursor: pointer;
+    border-top: none;
+    box-shadow: 0 2px 6px rgba(79,70,229,.28);
+    padding: 3px 7px;
+}
+.ag-slot.ag-booked:hover {
+    background: #3730a3;
+    box-shadow: 0 3px 10px rgba(79,70,229,.38);
+}
+.ag-slot-name  { font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; line-height: 1.3; }
+.ag-slot-title { font-size: .62rem; opacity: .82; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+/* ══════════════════════════════════════════════
+   CALENDAR - DARK THEME OVERRIDES
+══════════════════════════════════════════════ */
+[data-theme="dark"] .ag-wrap        { border-color: #334155; background: #1e293b; box-shadow: 0 4px 20px rgba(0,0,0,.35); }
+[data-theme="dark"] .ag-loading     { background: rgba(15,23,42,.85); color: #94a3b8; }
+[data-theme="dark"] .ag-head        { background: #162032; border-bottom-color: #334155; }
+[data-theme="dark"] .ag-gutter-head { border-right-color: #334155; }
+[data-theme="dark"] .ag-gutter-col  { background: #162032; border-right-color: #334155; }
+[data-theme="dark"] .ag-gutter-slot { color: #64748b; }
+[data-theme="dark"] .ag-days-head   { }
+[data-theme="dark"] .ag-day-th      { border-left-color: #334155; }
+[data-theme="dark"] .ag-dayname     { color: #475569; }
+[data-theme="dark"] .ag-daynum      { color: #e2e8f0; }
+[data-theme="dark"] .ag-day-th.ag-today .ag-dayname { color: #818cf8; }
+[data-theme="dark"] .ag-day-th.ag-today .ag-daynum  { background: #4f46e5; color: #fff; }
+
+[data-theme="dark"] .ag-col         { background: #1e293b; border-left-color: #334155; }
+[data-theme="dark"] .ag-col.ag-today-col { background: #1a1f3a; }
+
+[data-theme="dark"] .ag-slot        { border-top-color: #253348; }
+[data-theme="dark"] .ag-slot:nth-child(odd) { border-top-color: #2d3f55; }
+
+[data-theme="dark"] .ag-slot.ag-free         { background: transparent; }
+[data-theme="dark"] .ag-slot.ag-free:hover   { background: rgba(79,70,229,.18); }
+[data-theme="dark"] .ag-slot.ag-past         { background: #192030; }
+[data-theme="dark"] .ag-slot.ag-past:nth-child(odd) { background: #1b2234; }
+
+[data-theme="dark"] .ag-slot.ag-booked {
+    background: #4f46e5;
+    box-shadow: 0 2px 8px rgba(79,70,229,.45);
+}
+[data-theme="dark"] .ag-slot.ag-booked:hover { background: #6366f1; }
+
+/* ── Modals - completely independent of .ag-wrap ── */
+.rdv-modal-bg {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,.5);
+    z-index: 9999;          /* well above everything */
+    align-items: center;
+    justify-content: center;
+    padding: 1rem;
+    backdrop-filter: blur(3px);
+}
+.rdv-modal-bg.open { display: flex; }
+
+.rdv-modal {
+    background: var(--surface);
+    border-radius: 14px;
+    width: 100%;
+    max-width: 480px;
+    box-shadow: 0 24px 60px rgba(0,0,0,.22);
+    display: flex;
+    flex-direction: column;
+    max-height: 92vh;
+    overflow-y: auto;
+}
+.rdv-modal--sm { max-width: 380px; }
+
+/* Modal header */
+.rdv-modal-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 1.1rem 1.4rem;
+    border-bottom: 1px solid var(--border);
+    font-weight: 700;
+    font-size: .97rem;
+    background: var(--surface2);
+    border-radius: 14px 14px 0 0;
+    flex-shrink: 0;
+}
+.rdv-modal-head--primary {
+    background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%);
+    color: #fff;
+    border-bottom: none;
+}
+.rdv-modal-x {
+    background: none;
+    border: none;
+    cursor: pointer;
+    padding: .3rem;
+    border-radius: 6px;
+    display: flex;
+    align-items: center;
+    color: inherit;
+    opacity: .7;
+    transition: opacity .15s, background .15s;
+}
+.rdv-modal-x:hover { opacity: 1; background: rgba(255,255,255,.15); }
+
+/* Chips row */
+.rdv-chips {
+    display: flex;
+    gap: .5rem;
+    flex-wrap: wrap;
+    padding: .9rem 1.4rem .1rem;
+}
+.rdv-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: .35rem;
+    padding: .3rem .85rem;
+    border-radius: 20px;
+    font-size: .83rem;
+    font-weight: 600;
+}
+.rdv-chip-date { background: var(--primary-light); color: var(--primary); }
+.rdv-chip-time { background: #f0fdf4; color: #15803d; }
+
+/* Modal body */
+.rdv-modal-body { padding: 1rem 1.4rem 0; flex: 1; }
+
+/* Fields */
+.rdv-field { margin-bottom: .9rem; }
+.rdv-label {
+    display: flex;
+    align-items: center;
+    gap: .35rem;
+    font-size: .8rem;
+    font-weight: 600;
+    color: var(--text);
+    margin-bottom: .35rem;
+}
+.rdv-input {
+    width: 100%;
+    padding: .6rem .9rem;
+    border: 1.5px solid var(--border);
+    border-radius: 8px;
+    font-size: .9rem;
+    background: var(--input-bg, var(--surface));
+    color: var(--text);
+    outline: none;
+    transition: border-color .2s, box-shadow .2s;
+    font-family: inherit;
+}
+.rdv-input:focus {
+    border-color: var(--primary);
+    box-shadow: 0 0 0 3px rgba(79,70,229,.12);
+}
+.rdv-input::placeholder { color: var(--text-muted); }
+.rdv-textarea { resize: vertical; min-height: 72px; }
+
+/* Custom select - same style as rdv-input */
+.rdv-select {
+    width: 100%;
+    padding: .6rem .9rem;
+    border: 1.5px solid var(--border);
+    border-radius: 8px;
+    font-size: .9rem;
+    background: var(--input-bg, var(--surface));
+    color: var(--text);
+    outline: none;
+    appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%2364748b' stroke-width='2'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' d='M19 9l-7 7-7-7'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right .75rem center;
+    background-size: 15px;
+    padding-right: 2.4rem;
+    cursor: pointer;
+    transition: border-color .2s, box-shadow .2s;
+}
+.rdv-select:focus {
+    border-color: var(--primary);
+    box-shadow: 0 0 0 3px rgba(79,70,229,.12);
+}
+
+/* Feedback */
+.rdv-feedback {
+    padding: .5rem .9rem;
+    border-radius: 8px;
+    font-size: .85rem;
+    margin-top: .25rem;
+    margin-bottom: .5rem;
+}
+.rdv-feedback.rdv-err { background: var(--danger-light); color: var(--danger); }
+.rdv-feedback.rdv-ok  { background: var(--success-light); color: var(--success); }
+
+/* ── Detail modal head ── */
+.rdv-detail-head {
+    background: var(--surface2);
+    border-radius: 14px 14px 0 0;
+    border-bottom: 1px solid var(--border);
+}
+
+/* ── Detail rows ── */
+#detail-rows { padding: .25rem 0; }
+.rdv-detail-row {
+    display: flex;
+    align-items: flex-start;
+    gap: .85rem;
+    padding: .85rem 1.4rem;
+    border-bottom: 1px solid var(--border);
+    font-size: .92rem;
+    color: var(--text);
+}
+.rdv-detail-row:last-child { border-bottom: none; }
+.rdv-detail-icon { width: 16px; height: 16px; color: var(--primary); flex-shrink: 0; margin-top: 2px; }
+
+/* ── Detail contact row (top) ── */
+.rdv-detail-row--contact {
+    background: var(--surface2);
+    border-bottom: 1px solid var(--border);
+    gap: .9rem;
+    align-items: center;
+    padding: 1rem 1.4rem;
+}
+.rdv-detail-avatar {
+    width: 38px;
+    height: 38px;
+    border-radius: 50%;
+    background: var(--primary);
+    color: #fff;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1rem;
+    font-weight: 800;
+    flex-shrink: 0;
+}
+
+/* ── Two-button action row ── */
+.rdv-detail-actions {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: .6rem;
+    padding: 1rem 1.4rem .6rem;
+}
+
+.rdv-action-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: .45rem;
+    height: 42px;
+    border-radius: 10px;
+    font-size: .88rem;
+    font-weight: 700;
+    cursor: pointer;
+    border: none;
+    transition: opacity .15s, transform .1s, box-shadow .15s;
+    letter-spacing: .01em;
+}
+.rdv-action-btn:active { transform: scale(.97); }
+
+/* Email — indigo solid */
+.rdv-action-btn--email {
+    background: #4f46e5;
+    color: #fff;
+    box-shadow: 0 3px 10px rgba(79,70,229,.3);
+}
+.rdv-action-btn--email:hover {
+    background: #4338ca;
+    box-shadow: 0 4px 14px rgba(79,70,229,.4);
+}
+
+/* WhatsApp — green solid */
+.rdv-action-btn--wa {
+    background: #25D366;
+    color: #fff;
+    box-shadow: 0 3px 10px rgba(37,211,102,.28);
+}
+.rdv-action-btn--wa:hover {
+    background: #1ebe57;
+    box-shadow: 0 4px 14px rgba(37,211,102,.38);
+}
+
+/* ── Cancel row — subtle text link ── */
+.rdv-detail-cancel-row {
+    padding: .3rem 1.4rem .9rem;
+    display: flex;
+    justify-content: center;
+}
+.rdv-cancel-link {
+    display: inline-flex;
+    align-items: center;
+    gap: .35rem;
+    background: none;
+    border: none;
+    cursor: pointer;
+    color: #ef4444;
+    font-size: .8rem;
+    font-weight: 600;
+    opacity: .65;
+    padding: .3rem .6rem;
+    border-radius: 6px;
+    transition: opacity .15s, background .15s;
+    letter-spacing: .01em;
+}
+.rdv-cancel-link:hover {
+    opacity: 1;
+    background: #fef2f2;
+}
+[data-theme="dark"] .rdv-cancel-link:hover { background: rgba(239,68,68,.12); }
+
+/* Keep old aliases */
+.rdv-btn-danger { background: var(--danger); color: #fff; border: none; }
+.rdv-btn-danger:hover { background: #b91c1c; }
+
+.rdv-check-row {
+    display: flex;
+    align-items: center;
+    gap: .5rem;
+    font-size: .88rem;
+    color: var(--text);
+    cursor: pointer;
+    padding: .3rem .4rem;
+    border-radius: 7px;
+    transition: background .12s;
+}
+.rdv-check-row:hover { background: var(--surface2); }
+.rdv-check-row input[type=checkbox] {
+    width: 15px;
+    height: 15px;
+    cursor: pointer;
+    accent-color: var(--primary);
+}
+
+/* ── Searchable Contact Picker ── */
+.rdv-contact-picker { position: relative; }
+.rdv-contact-input-wrap {
+    position: relative;
+    display: flex;
+    align-items: center;
+}
+.rdv-contact-search-icon {
+    position: absolute;
+    left: .75rem;
+    color: var(--text-muted);
+    pointer-events: none;
+    flex-shrink: 0;
+}
+.rdv-contact-search {
+    padding-left: 2.1rem !important;
+    padding-right: 2.2rem !important;
+}
+.rdv-contact-clear {
+    position: absolute;
+    right: .55rem;
+    background: none;
+    border: none;
+    cursor: pointer;
+    color: var(--text-muted);
+    padding: .2rem;
+    border-radius: 4px;
+    display: flex;
+    align-items: center;
+    transition: color .15s;
+}
+.rdv-contact-clear:hover { color: var(--danger); }
+.rdv-contact-dropdown {
+    position: absolute;
+    top: calc(100% + 4px);
+    left: 0; right: 0;
+    background: var(--surface);
+    border: 1.5px solid var(--primary);
+    border-radius: 10px;
+    box-shadow: 0 8px 24px rgba(0,0,0,.18);
+    z-index: 9999;
+    max-height: 200px;
+    overflow-y: auto;
+    overflow-x: hidden;
+}
+.rdv-contact-option {
+    padding: .55rem .9rem;
+    font-size: .88rem;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: .6rem;
+    color: var(--text);
+    transition: background .1s;
+    border-bottom: 1px solid var(--border);
+}
+.rdv-contact-option:last-child { border-bottom: none; }
+.rdv-contact-option:hover, .rdv-contact-option.highlighted { background: var(--primary-light); color: var(--primary); }
+.rdv-contact-option .rdv-opt-avatar {
+    width: 26px; height: 26px;
+    border-radius: 50%;
+    background: var(--primary);
+    color: #fff;
+    font-size: .72rem;
+    font-weight: 700;
+    display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0;
+}
+.rdv-contact-option .rdv-opt-name { font-weight: 600; }
+.rdv-contact-option .rdv-opt-sub { font-size: .76rem; color: var(--text-muted); }
+.rdv-contact-empty {
+    padding: .75rem 1rem;
+    font-size: .85rem;
+    color: var(--text-muted);
+    text-align: center;
+}
+
+</style>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+/* ══════════════════════════════════════════════
+   CONSTANTS & STATE
+══════════════════════════════════════════════ */
+const MONTHS_FR = ['Janvier','Février','Mars','Avril','Mai','Juin','Juillet','Août','Septembre','Octobre','Novembre','Décembre'];
+const DAYS_FR   = ['Dim','Lun','Mar','Mer','Jeu','Ven','Sam'];
+const MONTH_SHORT = ['jan','fév','mar','avr','mai','jun','jul','aoû','sep','oct','nov','déc'];
+
+// All 30-min slots 08:00 → 17:30
+const ALL_SLOTS = [];
+for (let h = 8; h < 18; h++) {
+    ALL_SLOTS.push(String(h).padStart(2,'0') + ':00');
+    ALL_SLOTS.push(String(h).padStart(2,'0') + ':30');
+}
+
+let weekStart      = getMonday(new Date());
+let pendingDate    = null;
+let pendingSlot    = null;
+let currentApptId  = null;
+
+/* ══════════════════════════════════════════════
+   DATE HELPERS
+══════════════════════════════════════════════ */
+function pad(n){ return String(n).padStart(2,'0'); }
+function fmt(d){ return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`; }
+function addDays(d, n){ const r = new Date(d); r.setDate(r.getDate() + n); return r; }
+
+function getMonday(d) {
+    const day  = d.getDay();                    // 0=Sun
+    const diff = day === 0 ? -6 : 1 - day;     // shift so Mon=0
+    const m    = new Date(d);
+    m.setDate(d.getDate() + diff);
+    m.setHours(0, 0, 0, 0);
+    return m;
+}
+
+/* ══════════════════════════════════════════════
+   WEEK NAVIGATION
+══════════════════════════════════════════════ */
+function shiftWeek(n) { weekStart = addDays(weekStart, n * 7); renderWeek(); }
+function goToday()    { weekStart = getMonday(new Date()); renderWeek(); }
+
+/* ══════════════════════════════════════════════
+   RENDER CALENDAR
+══════════════════════════════════════════════ */
+async function renderWeek() {
+
+    // Show loading
+    const loadEl = document.getElementById('ag-loading');
+    loadEl.classList.add('visible');
+
+    const dates   = Array.from({length: 7}, (_, i) => fmt(addDays(weekStart, i)));
+    const todayStr = fmt(new Date());
+    const endDate  = addDays(weekStart, 6);
+
+    // Update week label
+    document.getElementById('week-label').textContent =
+        `Semaine du ${weekStart.getDate()} ${MONTHS_FR[weekStart.getMonth()]} ` +
+        `au ${endDate.getDate()} ${MONTHS_FR[endDate.getMonth()]} ${endDate.getFullYear()}`;
+
+    // Fetch all 7 days in parallel
+    let results;
+    try {
+        results = await Promise.all(
+            dates.map(d => fetch(`/appointments/slots?date=${d}`).then(r => r.json()))
+        );
+    } catch(e) {
+        loadEl.classList.remove('visible');
+        console.error('Fetch error', e);
+        return;
+    }
+
+    // Build lookup: "YYYY-MM-DD|HH:MM" → appointment object
+    const bookedMap = {};
+    results.forEach((data, i) => {
+        (data.appointments || []).forEach(a => {
+            bookedMap[`${dates[i]}|${a.time_slot}`] = a;
+        });
+    });
+
+    /* ── Day header row ── */
+    const headEl = document.getElementById('ag-days-head');
+    headEl.innerHTML = '';
+    dates.forEach(ds => {
+        const d   = new Date(ds + 'T00:00:00');
+        const div = document.createElement('div');
+        div.className = 'ag-day-th' + (ds === todayStr ? ' ag-today' : '');
+        div.innerHTML = `<span class="ag-dayname">${DAYS_FR[d.getDay()]}</span><span class="ag-daynum">${d.getDate()}</span>`;
+        headEl.appendChild(div);
+    });
+
+    /* ── Time gutter ── */
+    const gutterEl = document.getElementById('ag-gutter-col');
+    gutterEl.innerHTML = '';
+    ALL_SLOTS.forEach(s => {
+        const el = document.createElement('div');
+        el.className = 'ag-gutter-slot';
+        el.textContent = s.endsWith(':00') ? s : '';
+        gutterEl.appendChild(el);
+    });
+
+    /* ── Day columns + slots ── */
+    const colsEl = document.getElementById('ag-day-cols');
+    colsEl.innerHTML = '';
+
+    dates.forEach(ds => {
+        const isPast = ds < todayStr;
+        const col    = document.createElement('div');
+        col.className = 'ag-col' + (ds === todayStr ? ' ag-today-col' : '');
+
+        ALL_SLOTS.forEach(slot => {
+            const key  = `${ds}|${slot}`;
+            const cell = document.createElement('div');
+
+            if (bookedMap[key]) {
+                const a = bookedMap[key];
+                cell.className = 'ag-slot ag-booked';
+                cell.innerHTML = `<span class="ag-slot-name">${a.contact_name}</span>${a.title ? `<span class="ag-slot-title">${a.title}</span>` : ''}`;
+                cell.title     = `${a.contact_name}${a.title ? ' – ' + a.title : ''}`;
+                cell.addEventListener('click', () => openDetail(a));
+
+            } else if (isPast) {
+                cell.className = 'ag-slot ag-past';
+                cell.title     = 'Journée passée';
+
+            } else {
+                cell.className = 'ag-slot ag-free';
+                cell.title     = `Réserver le créneau ${slot}`;
+                cell.addEventListener('click', () => openBook(ds, slot));
+            }
+
+            col.appendChild(cell);
+        });
+
+        colsEl.appendChild(col);
+    });
+
+    loadEl.classList.remove('visible');
+    lucide.createIcons();
+}
+
+/* ══════════════════════════════════════════════
+   MODAL HELPERS
+══════════════════════════════════════════════ */
+function openRdvModal(id) {
+    document.getElementById(id).classList.add('open');
+    document.body.style.overflow = 'hidden';
+    // Reset contact picker when booking modal opens
+    if (id === 'book-modal') {
+        const sel = document.getElementById('bk-contact');
+        if (sel) sel.value = '';
+        const inp = document.getElementById('bk-contact-search');
+        if (inp) inp.value = '';
+        const clr = document.getElementById('bk-contact-clear');
+        if (clr) clr.style.display = 'none';
+        const dd = document.getElementById('bk-contact-dropdown');
+        if (dd) dd.style.display = 'none';
+    }
+}
+function closeRdvModal(id) {
+    document.getElementById(id).classList.remove('open');
+    document.body.style.overflow = '';
+}
+function bgClose(e, id) {
+    if (e.target.id === id) closeRdvModal(id);
+}
+document.addEventListener('keydown', e => {
+    if (e.key === 'Escape') {
+        closeRdvModal('book-modal');
+        closeRdvModal('detail-modal');
+    }
+});
+
+/* ══════════════════════════════════════════════
+   BOOK MODAL - open
+══════════════════════════════════════════════ */
+function openBook(dateStr, slot) {
+    pendingDate = dateStr;
+    pendingSlot = slot;
+
+    // Build chips
+    const [y, m, d] = dateStr.split('-');
+    const chipsEl = document.getElementById('book-chips');
+    chipsEl.innerHTML = `
+        <span class="rdv-chip rdv-chip-date">${parseInt(d)} ${MONTH_SHORT[parseInt(m)-1]} ${y}</span>
+        <span class="rdv-chip rdv-chip-time">${slot}</span>
+    `;
+
+    // Reset fields
+    document.getElementById('bk-contact').value = '';
+    document.getElementById('bk-title').value   = '';
+    document.getElementById('bk-notes').value   = '';
+    hideFeedback();
+
+    openRdvModal('book-modal');
+    setTimeout(() => document.getElementById('bk-contact').focus(), 80);
+}
+
+/* ══════════════════════════════════════════════
+   BOOK MODAL - submit
+══════════════════════════════════════════════ */
+
+/* ══════════════════════════════════════════════
+   SEARCHABLE CONTACT PICKER
+══════════════════════════════════════════════ */
+let _contactPickerOpen = false;
+
+// Collect all contacts from the hidden select
+function getAllContacts() {
+    const sel = document.getElementById('bk-contact');
+    if (!sel) return [];
+    return Array.from(sel.options)
+        .filter(o => o.value)
+        .map(o => ({
+            id:    o.value,
+            label: o.dataset.label || o.text,
+            name:  o.dataset.name  || o.text.toLowerCase()
+        }));
+}
+
+function renderContactDropdown(filter) {
+    const dd = document.getElementById('bk-contact-dropdown');
+    if (!dd) return;
+    const all = getAllContacts();
+    const q   = (filter || '').toLowerCase().trim();
+    const filtered = q
+        ? all.filter(c => c.name.includes(q) || c.label.toLowerCase().includes(q))
+        : all;
+
+    if (filtered.length === 0) {
+        dd.innerHTML = '<div class="rdv-contact-empty">Aucun contact trouvé</div>';
+        return;
+    }
+
+    dd.innerHTML = '';
+    filtered.forEach(c => {
+        const initial = c.label.charAt(0).toUpperCase();
+        let display = c.label;
+        if (q) {
+            const re = new RegExp('(' + q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + ')', 'gi');
+            display = c.label.replace(re, '<mark style="background:var(--primary-light);color:var(--primary);border-radius:2px;font-weight:700;">$1</mark>');
+        }
+        const div = document.createElement('div');
+        div.className = 'rdv-contact-option';
+        div.innerHTML = `<div class="rdv-opt-avatar">${initial}</div><span class="rdv-opt-name">${display}</span>`;
+
+        // Use mousedown + preventDefault to prevent input blur before selection
+        div.addEventListener('mousedown', function(e) {
+            e.preventDefault(); // stops the input from blurring
+            selectContact(c.id, c.label);
+        });
+        dd.appendChild(div);
+    });
+}
+
+function openContactPicker() {
+    const dd = document.getElementById('bk-contact-dropdown');
+    if (dd) { dd.style.display = 'block'; }
+    renderContactDropdown(document.getElementById('bk-contact-search')?.value || '');
+    _contactPickerOpen = true;
+}
+
+function closeContactPicker() {
+    const dd = document.getElementById('bk-contact-dropdown');
+    if (dd) dd.style.display = 'none';
+    _contactPickerOpen = false;
+}
+
+function filterContactPicker(val) {
+    const dd = document.getElementById('bk-contact-dropdown');
+    if (!dd) return;
+    dd.style.display = 'block';
+    renderContactDropdown(val);
+}
+
+function selectContact(id, label) {
+    // Set hidden select value
+    const sel = document.getElementById('bk-contact');
+    if (sel) sel.value = id;
+    // Fill the search input with selected name
+    const inp = document.getElementById('bk-contact-search');
+    if (inp) { inp.value = label; }
+    // Show clear button
+    const clr = document.getElementById('bk-contact-clear');
+    if (clr) clr.style.display = 'flex';
+    // Close dropdown
+    closeContactPicker();
+}
+
+function clearContactPicker() {
+    const sel = document.getElementById('bk-contact');
+    if (sel) sel.value = '';
+    const inp = document.getElementById('bk-contact-search');
+    if (inp) { inp.value = ''; inp.focus(); }
+    const clr = document.getElementById('bk-contact-clear');
+    if (clr) clr.style.display = 'none';
+    openContactPicker();
+}
+
+// Close picker when clicking outside
+document.addEventListener('click', function(e) {
+    const picker = document.getElementById('bk-contact-picker');
+    if (picker && !picker.contains(e.target)) {
+        closeContactPicker();
+    }
+});
+
+function submitBook() {
+    const contactId    = document.getElementById('bk-contact').value;
+    const title        = document.getElementById('bk-title').value.trim();
+    const notes        = document.getElementById('bk-notes').value.trim();
+    const reminderEmail = document.getElementById('bk-reminder-email')?.checked || false;
+    const reminderSms   = document.getElementById('bk-reminder-sms')?.checked || false;
+    const syncGcal      = document.getElementById('bk-gcal')?.checked || false;
+
+    if (!contactId) {
+        showFeedback('Veuillez sélectionner un contact.', false);
+        return;
+    }
+
+    const btn = document.querySelector('#book-modal .btn-primary');
+    btn.disabled = true;
+    btn.textContent = 'En cours…';
+
+    fetch('/appointments/book', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({
+            contact_id:     parseInt(contactId),
+            date:           pendingDate,
+            time_slot:      pendingSlot,
+            title,
+            notes,
+            reminder_email: reminderEmail,
+            reminder_sms:   reminderSms,
+            sync_gcal:      syncGcal
+        })
+    })
+    .then(r => r.json())
+    .then(data => {
+        if (data.ok) {
+            closeRdvModal('book-modal');
+            renderWeek();
+            // Show reminder feedback toasts
+            if (reminderEmail) {
+                showGlobalToast(data.reminder_email_sent
+                    ? 'Rappel email envoyé'
+                    : 'Rappel email : ' + (data.reminder_email_msg || 'Erreur'));
+            }
+            if (reminderSms) {
+                showGlobalToast(data.reminder_sms_sent
+                    ? 'Rappel WhatsApp envoyé'
+                    : 'Rappel WhatsApp : ' + (data.reminder_sms_msg || 'Erreur'));
+            }
+            if (syncGcal) {
+                showGlobalToast(data.gcal_synced
+                    ? 'Ajouté à Google Calendar'
+                    : 'Google Calendar : ' + (data.gcal_error || 'Erreur'));
+            }
+        } else {
+            showFeedback(data.msg, false);
+        }
+    })
+    .catch(() => showFeedback('Erreur réseau, réessayez.', false))
+    .finally(() => {
+        btn.disabled = false;
+        btn.innerHTML = '<i data-lucide="check" style="width:14px;height:14px;vertical-align:-2px;"></i> Confirmer le RDV';
+        lucide.createIcons();
+    });
+}
+
+function showGlobalToast(msg) {
+    let t = document.getElementById('rdv-toast');
+    if (!t) {
+        t = document.createElement('div'); t.id = 'rdv-toast';
+        Object.assign(t.style, {
+            position:'fixed',bottom:'1.5rem',left:'50%',transform:'translateX(-50%)',
+            padding:'.65rem 1.3rem',borderRadius:'10px',fontWeight:'600',fontSize:'.88rem',
+            boxShadow:'0 8px 24px rgba(0,0,0,.2)',zIndex:'9999',transition:'opacity .3s',
+            whiteSpace:'nowrap',background:'var(--success)',color:'#fff'
+        });
+        document.body.appendChild(t);
+    }
+    t.textContent = msg;
+    t.style.opacity = '1';
+    clearTimeout(t._t);
+    t._t = setTimeout(() => t.style.opacity = '0', 3000);
+}
+
+// Remind button in detail modal
+async function sendReminderFromDetail(channel) {
+    if (!currentApptId) return;
+    try {
+        const res = await fetch('/appointments/remind/' + currentApptId, {
+            method: 'POST', headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({channel})
+        });
+        const data = await res.json();
+        showGlobalToast(data.ok ? '✅ ' + data.msg : '❌ ' + data.msg);
+    } catch(e) { showGlobalToast('❌ Erreur réseau'); }
+}
+
+
+
+function showFeedback(msg, ok) {
+    const el = document.getElementById('bk-feedback');
+    el.textContent = msg;
+    el.className   = 'rdv-feedback ' + (ok ? 'rdv-ok' : 'rdv-err');
+    el.style.display = 'block';
+}
+function hideFeedback() {
+    const el = document.getElementById('bk-feedback');
+    el.style.display = 'none';
+}
+
+/* ══════════════════════════════════════════════
+   DETAIL MODAL
+══════════════════════════════════════════════ */
+function openDetail(a) {
+    currentApptId = a.id;
+
+    const [y, m, d] = a.date.split('-');
+    const rows = document.getElementById('detail-rows');
+    rows.innerHTML = `
+        <div class="rdv-detail-row rdv-detail-row--contact">
+            <div class="rdv-detail-avatar">${a.contact_name.charAt(0).toUpperCase()}</div>
+            <div style="min-width:0;">
+                <div style="font-weight:700;font-size:.97rem;color:var(--text);">${a.contact_name}</div>
+                ${a.email ? `<div style="font-size:.78rem;color:var(--text-muted);margin-top:.1rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${a.email}</div>` : ''}
+            </div>
+        </div>
+        <div class="rdv-detail-row">
+            <i data-lucide="calendar" class="rdv-detail-icon"></i>
+            <span>${parseInt(d)} ${MONTHS_FR[parseInt(m)-1]} ${y} à <strong>${a.time_slot}</strong></span>
+        </div>
+        ${a.title ? `
+        <div class="rdv-detail-row">
+            <i data-lucide="file-text" class="rdv-detail-icon"></i>
+            <span>${a.title}</span>
+        </div>` : ''}
+        ${a.notes ? `
+        <div class="rdv-detail-row">
+            <i data-lucide="sticky-note" class="rdv-detail-icon"></i>
+            <span style="white-space:pre-wrap;color:var(--text-muted);font-size:.88rem;">${a.notes}</span>
+        </div>` : ''}
+    `;
+
+    openRdvModal('detail-modal');
+    lucide.createIcons();
+}
+
+function cancelCurrentAppt() {
+    if (!confirm('Confirmer l\'annulation de ce rendez-vous ?')) return;
+
+    fetch('/appointments/cancel/' + currentApptId, { method: 'POST' })
+        .then(r => r.json())
+        .then(data => {
+            if (data.ok) {
+                closeRdvModal('detail-modal');
+                renderWeek();
+            } else {
+                alert(data.msg || 'Erreur lors de l\'annulation.');
+            }
+        });
+}
+
+/* ══════════════════════════════════════════════
+   INIT
+══════════════════════════════════════════════ */
+renderWeek();
+</script>
+{% endblock %}

@@ -1,0 +1,573 @@
+{% extends "base.html" %}
+{% block title %}Contacts{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div>
+        <h1>Mes Contacts</h1>
+        <p class="subtitle" id="contact-count">{{ contacts|length }} contact{{ 's' if contacts|length != 1 }}</p>
+    </div>
+    <div class="page-actions">
+        <button class="btn btn-secondary" onclick="openImportModal()" title="Importer CSV/Excel">
+            <i data-lucide="upload" class="icon"></i> Importer
+        </button>
+        <a href="{{ url_for('export_csv') }}" class="btn btn-secondary">
+            <i data-lucide="download" class="icon"></i> Exporter CSV
+        </a>
+        <button class="btn btn-primary" onclick="openAddModal()">
+            <i data-lucide="user-plus" class="icon"></i> Nouveau contact
+        </button>
+    </div>
+</div>
+
+<!-- Real-time search -->
+<div class="search-form">
+    <div class="search-wrapper">
+        <i data-lucide="search" class="search-icon-svg"></i>
+        <input type="text" id="search-input" placeholder="Rechercher par nom, email ou téléphone…"
+               value="{{ query }}" class="search-input" oninput="filterContacts(this.value)">
+        <button class="search-clear" id="search-clear" onclick="clearSearch()" style="display:none" title="Effacer">
+            <i data-lucide="x" style="width:14px;height:14px;"></i>
+        </button>
+    </div>
+</div>
+
+{% if contacts %}
+<div class="table-wrapper">
+    <table class="contacts-table" id="contacts-table">
+        <thead>
+            <tr>
+                <th>#</th>
+                <th>Nom</th>
+                <th>Email</th>
+                <th>Téléphone</th>
+                <th>Actions</th>
+            </tr>
+        </thead>
+        <tbody id="contacts-tbody">
+            {% for contact in contacts %}
+            <tr data-name="{{ contact.name|lower }}" data-email="{{ contact.email|lower }}" data-phone="{{ contact.phone }}">
+                <td class="id-cell">{{ contact.id }}</td>
+                <td>
+                    <div class="contact-avatar">{{ contact.name[0].upper() }}</div>
+                    <span class="contact-name">{{ contact.name }}</span>
+                </td>
+                <td><a href="mailto:{{ contact.email }}" class="email-link">{{ contact.email }}</a></td>
+                <td>{{ contact.phone }}</td>
+                <td class="actions-cell">
+                    <button class="btn-icon btn-email" title="Envoyer un e-mail"
+                        onclick="openEmailModal({{ contact.id }}, '{{ contact.name|replace("'", "\\'") }}', '{{ contact.email }}')">
+                        <i data-lucide="mail" style="width:15px;height:15px;"></i>
+                    </button>
+                    <button class="btn-icon btn-whatsapp" title="Envoyer sur WhatsApp"
+                        onclick="openWhatsappModal({{ contact.id }}, '{{ contact.name|replace("'", "\\'") }}', '{{ contact.phone }}')">
+                        <i data-lucide="message-circle" style="width:15px;height:15px;"></i>
+                    </button>
+                    <button class="btn-icon btn-edit" title="Modifier"
+                        onclick="openEditModal({{ contact.id }}, '{{ contact.name|replace("'", "\\'") }}', '{{ contact.email }}', '{{ contact.phone }}')">
+                        <i data-lucide="pencil" style="width:15px;height:15px;"></i>
+                    </button>
+                    <button class="btn-icon btn-delete" title="Supprimer"
+                        onclick="openDeleteModal({{ contact.id }}, '{{ contact.name|replace("'", "\\'") }}')">
+                        <i data-lucide="trash-2" style="width:15px;height:15px;"></i>
+                    </button>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    <div id="no-results" class="empty-state" style="display:none; border:none;">
+        <i data-lucide="search-x" class="empty-lucide-icon"></i>
+        <h3>Aucun résultat</h3>
+        <p>Essayez un autre terme de recherche.</p>
+    </div>
+</div>
+{% else %}
+<div class="empty-state">
+    {% if query %}
+        <i data-lucide="search-x" class="empty-lucide-icon"></i>
+        <h3>Aucun résultat pour « {{ query }} »</h3>
+        <p><a href="{{ url_for('contacts') }}">Voir tous les contacts</a></p>
+    {% else %}
+        <i data-lucide="users" class="empty-lucide-icon"></i>
+        <h3>Aucun contact pour le moment</h3>
+        <p>Commencez par <button class="link-btn" onclick="openAddModal()">ajouter un contact</button>.</p>
+    {% endif %}
+</div>
+{% endif %}
+
+
+<!-- ===== ADD Contact Modal ===== -->
+<div id="add-modal" class="modal-overlay" onclick="closeModalOutside(event, 'add-modal')">
+    <div class="modal-card">
+        <div class="modal-header">
+            <h2><i data-lucide="user-plus" class="icon"></i> Nouveau contact</h2>
+            <button class="modal-close" onclick="closeModal('add-modal')" title="Fermer">
+                <i data-lucide="x"></i>
+            </button>
+        </div>
+        <form method="POST" action="{{ url_for('add_contact') }}" class="contact-form">
+            <div class="form-group">
+                <label for="add-name">
+                    <i data-lucide="user" class="label-icon"></i> Nom complet <span class="required">*</span>
+                </label>
+                <input type="text" id="add-name" name="name" placeholder="Ex : Alice Dupont" required>
+            </div>
+            <div class="form-group">
+                <label for="add-email">
+                    <i data-lucide="mail" class="label-icon"></i> Adresse e-mail <span class="required">*</span>
+                </label>
+                <input type="email" id="add-email" name="email" placeholder="Ex : alice@example.com" required>
+            </div>
+            <div class="form-group">
+                <label for="add-phone">
+                    <i data-lucide="phone" class="label-icon"></i> Numéro de téléphone <span class="required">*</span>
+                </label>
+                <input type="text" id="add-phone" name="phone" placeholder="Ex : +212 6 00 00 00 00" required>
+            </div>
+            <div class="form-actions">
+                <button type="button" class="btn btn-secondary" onclick="closeModal('add-modal')">Annuler</button>
+                <button type="submit" class="btn btn-primary">
+                    <i data-lucide="check" class="icon"></i> Ajouter le contact
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+
+
+<!-- ===== EDIT Contact Modal ===== -->
+<div id="edit-modal" class="modal-overlay" onclick="closeModalOutside(event, 'edit-modal')">
+    <div class="modal-card">
+        <div class="modal-header">
+            <h2><i data-lucide="pencil" class="icon"></i> Modifier le contact</h2>
+            <button class="modal-close" onclick="closeModal('edit-modal')" title="Fermer">
+                <i data-lucide="x"></i>
+            </button>
+        </div>
+        <form method="POST" id="edit-form" class="contact-form">
+            <div class="form-group">
+                <label for="edit-name">
+                    <i data-lucide="user" class="label-icon"></i> Nom complet <span class="required">*</span>
+                </label>
+                <input type="text" id="edit-name" name="name" placeholder="Ex : Alice Dupont" required>
+            </div>
+            <div class="form-group">
+                <label for="edit-email">
+                    <i data-lucide="mail" class="label-icon"></i> Adresse e-mail <span class="required">*</span>
+                </label>
+                <input type="email" id="edit-email" name="email" placeholder="Ex : alice@example.com" required>
+            </div>
+            <div class="form-group">
+                <label for="edit-phone">
+                    <i data-lucide="phone" class="label-icon"></i> Numéro de téléphone <span class="required">*</span>
+                </label>
+                <input type="text" id="edit-phone" name="phone" placeholder="Ex : +212 6 00 00 00 00" required>
+            </div>
+            <div class="form-actions">
+                <button type="button" class="btn btn-secondary" onclick="closeModal('edit-modal')">Annuler</button>
+                <button type="submit" class="btn btn-primary">
+                    <i data-lucide="check" class="icon"></i> Enregistrer les modifications
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+
+
+<!-- ===== DELETE Confirmation Modal ===== -->
+<div id="delete-modal" class="modal-overlay" onclick="closeModalOutside(event, 'delete-modal')">
+    <div class="modal-card modal-card--sm">
+        <div class="modal-header modal-header--danger">
+            <h2><i data-lucide="trash-2" class="icon"></i> Confirmer la suppression</h2>
+            <button class="modal-close" onclick="closeModal('delete-modal')" title="Fermer">
+                <i data-lucide="x"></i>
+            </button>
+        </div>
+        <div class="modal-body">
+            <p>Êtes-vous sûr de vouloir supprimer le contact <strong id="delete-name"></strong> ?</p>
+            <p class="text-muted">Cette action est irréversible.</p>
+        </div>
+        <form method="POST" id="delete-form" class="contact-form">
+            <div class="form-actions">
+                <button type="button" class="btn btn-secondary" onclick="closeModal('delete-modal')">Annuler</button>
+                <button type="submit" class="btn btn-danger">
+                    <i data-lucide="trash-2" class="icon"></i> Supprimer
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+
+
+<!-- ===== IMPORT Modal ===== -->
+<div id="import-modal" class="modal-overlay" onclick="closeModalOutside(event, 'import-modal')">
+    <div class="modal-card">
+        <div class="modal-header">
+            <h2><i data-lucide="upload" class="icon"></i> Importer des contacts</h2>
+            <button class="modal-close" onclick="closeModal('import-modal')" title="Fermer">
+                <i data-lucide="x"></i>
+            </button>
+        </div>
+        <div class="modal-body">
+            <div class="import-info">
+                <i data-lucide="info" style="width:16px;height:16px;flex-shrink:0;margin-top:2px;"></i>
+                <div>
+                    <p>Formats acceptés : <strong>CSV</strong> ou <strong>Excel (.xlsx)</strong></p>
+                    <p class="text-muted">Le fichier doit contenir les colonnes : <code>name</code>, <code>email</code>, <code>phone</code><br>
+                    (ou en français : <code>nom</code>, <code>téléphone</code>)</p>
+                </div>
+            </div>
+            <form method="POST" action="{{ url_for('import_contacts') }}" enctype="multipart/form-data" class="contact-form" id="import-form">
+                <div class="form-group">
+                    <label for="import-file">
+                        <i data-lucide="file-spreadsheet" class="label-icon"></i> Fichier à importer <span class="required">*</span>
+                    </label>
+                    <div class="file-drop-zone" id="drop-zone" onclick="document.getElementById('import-file').click()">
+                        <i data-lucide="upload-cloud" style="width:32px;height:32px;color:var(--primary);margin-bottom:8px;"></i>
+                        <p id="drop-label">Glissez-déposez votre fichier ici ou <span class="link-btn">cliquez pour parcourir</span></p>
+                        <p class="text-muted" style="font-size:0.78rem;">CSV, XLSX - max 5 Mo</p>
+                    </div>
+                    <input type="file" id="import-file" name="import_file" accept=".csv,.xlsx,.xls" style="display:none"
+                           onchange="onFileSelected(this)">
+                </div>
+                <div class="form-actions">
+                    <button type="button" class="btn btn-secondary" onclick="closeModal('import-modal')">Annuler</button>
+                    <button type="submit" class="btn btn-primary" id="import-submit-btn" disabled>
+                        <i data-lucide="upload" class="icon"></i> Importer
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+
+<!-- ===== SEND EMAIL Modal ===== -->
+<div id="email-modal" class="modal-overlay" onclick="closeModalOutside(event, 'email-modal')">
+    <div class="modal-card">
+        <div class="modal-header modal-header--email">
+            <h2><i data-lucide="send" class="icon"></i> Envoyer un e-mail</h2>
+            <button class="modal-close" onclick="closeModal('email-modal')" title="Fermer">
+                <i data-lucide="x"></i>
+            </button>
+        </div>
+        <div class="modal-body">
+            <div class="msg-recipient-bar" id="email-recipient-bar">
+                <i data-lucide="user" style="width:14px;height:14px;flex-shrink:0;"></i>
+                <span id="email-recipient-label"></span>
+            </div>
+        </div>
+        <div class="contact-form" style="padding: 0 1.5rem 1.5rem;">
+            <div class="form-group">
+                <label for="email-subject">
+                    <i data-lucide="tag" class="label-icon"></i> Objet <span class="required">*</span>
+                </label>
+                <input type="text" id="email-subject" placeholder="Ex : Rappel de réunion" required>
+            </div>
+            <div class="form-group">
+                <label for="email-body">
+                    <i data-lucide="align-left" class="label-icon"></i> Message <span class="required">*</span>
+                </label>
+                <textarea id="email-body" rows="5" placeholder="Votre message ici…" required
+                    style="resize:vertical;min-height:110px;"></textarea>
+            </div>
+            <div id="email-feedback" class="msg-feedback" style="display:none;"></div>
+            <div class="form-actions">
+                <button type="button" class="btn btn-secondary" onclick="closeModal('email-modal')">Annuler</button>
+                <button type="button" class="btn btn-email-send" id="email-send-btn" onclick="submitEmail()">
+                    <i data-lucide="send" class="icon"></i> Envoyer
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+
+<!-- ===== SEND WHATSAPP Modal ===== -->
+<div id="whatsapp-modal" class="modal-overlay" onclick="closeModalOutside(event, 'whatsapp-modal')">
+    <div class="modal-card">
+        <div class="modal-header modal-header--whatsapp">
+            <h2>
+                <svg class="icon" viewBox="0 0 24 24" fill="currentColor" style="width:18px;height:18px;">
+                    <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347z"/>
+                    <path d="M12 0C5.373 0 0 5.373 0 12c0 2.123.554 4.118 1.528 5.855L.057 23.882a.5.5 0 0 0 .612.612l6.058-1.464A11.944 11.944 0 0 0 12 24c6.627 0 12-5.373 12-12S18.627 0 12 0zm0 22c-1.907 0-3.694-.512-5.232-1.402l-.374-.217-3.875.936.965-3.799-.235-.386A9.944 9.944 0 0 1 2 12C2 6.477 6.477 2 12 2s10 4.477 10 10-4.477 10-10 10z"/>
+                </svg>
+                Message WhatsApp
+            </h2>
+            <button class="modal-close" onclick="closeModal('whatsapp-modal')" title="Fermer">
+                <i data-lucide="x"></i>
+            </button>
+        </div>
+        <div class="modal-body">
+            <div class="msg-recipient-bar" id="wa-recipient-bar">
+                <i data-lucide="smartphone" style="width:14px;height:14px;flex-shrink:0;"></i>
+                <span id="wa-recipient-label"></span>
+            </div>
+            <div class="whatsapp-info-box">
+                <i data-lucide="info" style="width:14px;height:14px;flex-shrink:0;margin-top:2px;"></i>
+                <!-- <p>Le message sera envoyé directement via <strong>Twilio WhatsApp API</strong> - aucune application ne s'ouvrira.</p> -->
+            </div>
+            <div id="wa-feedback" style="display:none;margin:0 0 .5rem;padding:.6rem 1rem;border-radius:8px;font-size:.85rem;"></div>
+        </div>
+        <div class="contact-form" style="padding: 0 1.5rem 1.5rem;">
+            <div class="form-group">
+                <label for="wa-message">
+                    <i data-lucide="message-square" class="label-icon"></i> Message <span class="required">*</span>
+                </label>
+                <textarea id="wa-message" rows="4" placeholder="Bonjour, je vous contacte au sujet de…" required
+                    style="resize:vertical;min-height:100px;"></textarea>
+            </div>
+            <div class="form-actions">
+                <button type="button" class="btn btn-secondary" onclick="closeModal('whatsapp-modal')">Annuler</button>
+                <button type="button" class="btn btn-whatsapp-send" onclick="openWhatsapp()">
+                    <svg viewBox="0 0 24 24" fill="currentColor" style="width:16px;height:16px;">
+                        <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347z"/><path d="M12 0C5.373 0 0 5.373 0 12c0 2.123.554 4.118 1.528 5.855L.057 23.882a.5.5 0 0 0 .612.612l6.058-1.464A11.944 11.944 0 0 0 12 24c6.627 0 12-5.373 12-12S18.627 0 12 0zm0 22c-1.907 0-3.694-.512-5.232-1.402l-.374-.217-3.875.936.965-3.799-.235-.386A9.944 9.944 0 0 1 2 12C2 6.477 6.477 2 12 2s10 4.477 10 10-4.477 10-10 10z"/>
+                    </svg>
+                    Envoyer via Twilio
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
+<script>
+    lucide.createIcons();
+
+    // ── Modal helpers ──
+    function openModal(id) {
+        document.getElementById(id).classList.add('active');
+        document.body.style.overflow = 'hidden';
+    }
+    function closeModal(id) {
+        document.getElementById(id).classList.remove('active');
+        document.body.style.overflow = '';
+    }
+    function closeModalOutside(e, id) {
+        if (e.target === document.getElementById(id)) closeModal(id);
+    }
+    document.addEventListener('keydown', e => {
+        if (e.key === 'Escape') {
+            ['add-modal','edit-modal','delete-modal','import-modal'].forEach(closeModal);
+        }
+    });
+
+    // ── Add modal ──
+    function openAddModal() {
+        openModal('add-modal');
+        setTimeout(() => document.getElementById('add-name').focus(), 100);
+    }
+
+    // ── Edit modal ──
+    function openEditModal(id, name, email, phone) {
+        document.getElementById('edit-form').action = '/contacts/edit/' + id;
+        document.getElementById('edit-name').value = name;
+        document.getElementById('edit-email').value = email;
+        document.getElementById('edit-phone').value = phone;
+        openModal('edit-modal');
+        setTimeout(() => document.getElementById('edit-name').focus(), 100);
+    }
+
+    // ── Delete modal ──
+    function openDeleteModal(id, name) {
+        document.getElementById('delete-form').action = '/contacts/delete/' + id;
+        document.getElementById('delete-name').textContent = name;
+        openModal('delete-modal');
+    }
+
+    // ── Import modal ──
+    function openImportModal() {
+        // reset
+        document.getElementById('import-file').value = '';
+        document.getElementById('drop-label').innerHTML = 'Glissez-déposez votre fichier ici ou <span class="link-btn">cliquez pour parcourir</span>';
+        document.getElementById('import-submit-btn').disabled = true;
+        document.getElementById('drop-zone').classList.remove('drop-zone--ready');
+        openModal('import-modal');
+    }
+
+    function onFileSelected(input) {
+        if (input.files && input.files[0]) {
+            const f = input.files[0];
+            document.getElementById('drop-label').innerHTML =
+                '<i data-lucide="file-check" style="width:18px;height:18px;vertical-align:middle;margin-right:4px;"></i>' +
+                '<strong>' + f.name + '</strong> (' + (f.size/1024).toFixed(1) + ' Ko)';
+            document.getElementById('import-submit-btn').disabled = false;
+            document.getElementById('drop-zone').classList.add('drop-zone--ready');
+            lucide.createIcons();
+        }
+    }
+
+    // Drag-and-drop
+    const dropZone = document.getElementById('drop-zone');
+    if (dropZone) {
+        dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('drop-zone--over'); });
+        dropZone.addEventListener('dragleave', () => dropZone.classList.remove('drop-zone--over'));
+        dropZone.addEventListener('drop', e => {
+            e.preventDefault();
+            dropZone.classList.remove('drop-zone--over');
+            const fileInput = document.getElementById('import-file');
+            fileInput.files = e.dataTransfer.files;
+            onFileSelected(fileInput);
+        });
+    }
+
+    // ── Search ──
+    function filterContacts(query) {
+        const q = query.trim().toLowerCase();
+        const rows = document.querySelectorAll('#contacts-tbody tr');
+        const clearBtn = document.getElementById('search-clear');
+        clearBtn.style.display = q ? 'flex' : 'none';
+
+        let visible = 0;
+        rows.forEach(row => {
+            const match = !q ||
+                (row.dataset.name || '').includes(q) ||
+                (row.dataset.email || '').includes(q) ||
+                (row.dataset.phone || '').includes(q);
+            row.style.display = match ? '' : 'none';
+            if (match) visible++;
+        });
+
+        const countEl = document.getElementById('contact-count');
+        if (countEl) {
+            countEl.textContent = visible + ' contact' + (visible !== 1 ? 's' : '')
+                + (q ? ' trouvé' + (visible !== 1 ? 's' : '') : '');
+        }
+
+        const noResults = document.getElementById('no-results');
+        const tbody = document.getElementById('contacts-tbody');
+        if (noResults) {
+            noResults.style.display = (visible === 0 && q) ? 'block' : 'none';
+            if (tbody) tbody.style.display = (visible === 0 && q) ? 'none' : '';
+        }
+    }
+
+    function clearSearch() {
+        const input = document.getElementById('search-input');
+        input.value = '';
+        filterContacts('');
+        input.focus();
+    }
+
+    // ── Email modal ──
+    let _emailContactId = null;
+    function openEmailModal(id, name, email) {
+        _emailContactId = id;
+        document.getElementById('email-recipient-label').textContent = name + ' <' + email + '>';
+        document.getElementById('email-subject').value = '';
+        document.getElementById('email-body').value = '';
+        const fb = document.getElementById('email-feedback');
+        fb.style.display = 'none'; fb.className = 'msg-feedback';
+        document.getElementById('email-send-btn').disabled = false;
+        openModal('email-modal');
+        setTimeout(() => document.getElementById('email-subject').focus(), 100);
+    }
+
+    async function submitEmail() {
+        const subject = document.getElementById('email-subject').value.trim();
+        const body    = document.getElementById('email-body').value.trim();
+        const fb      = document.getElementById('email-feedback');
+        const btn     = document.getElementById('email-send-btn');
+
+        if (!subject || !body) {
+            showFeedback(fb, false, 'Veuillez remplir l\'objet et le message.');
+            return;
+        }
+
+        btn.disabled = true;
+        btn.innerHTML = '<i data-lucide="loader-2" class="icon spin"></i> Envoi…';
+        lucide.createIcons();
+
+        const fd = new FormData();
+        fd.append('subject', subject);
+        fd.append('body', body);
+
+        try {
+            const res = await fetch('/contacts/send-email/' + _emailContactId, {
+                method: 'POST', body: fd
+            });
+            const data = await res.json();
+            showFeedback(fb, data.ok, data.msg);
+            if (data.ok) {
+                btn.innerHTML = '<i data-lucide="check" class="icon"></i> Envoyé !';
+                setTimeout(() => closeModal('email-modal'), 1800);
+            } else {
+                btn.disabled = false;
+                btn.innerHTML = '<i data-lucide="send" class="icon"></i> Envoyer';
+            }
+        } catch(e) {
+            showFeedback(fb, false, 'Erreur réseau. Réessayez.');
+            btn.disabled = false;
+            btn.innerHTML = '<i data-lucide="send" class="icon"></i> Envoyer';
+        }
+        lucide.createIcons();
+    }
+
+    // ── WhatsApp modal ──
+    let _waContactId = null;
+    function openWhatsappModal(id, name, phone) {
+        _waContactId = id;
+        document.getElementById('wa-recipient-label').textContent = name + ' · ' + phone;
+        document.getElementById('wa-message').value = 'Bonjour ' + name + ', ';
+        openModal('whatsapp-modal');
+        setTimeout(() => {
+            const ta = document.getElementById('wa-message');
+            ta.focus();
+            ta.setSelectionRange(ta.value.length, ta.value.length);
+        }, 100);
+    }
+
+    async function openWhatsapp() {
+        const message = document.getElementById('wa-message').value.trim();
+        const fb = document.getElementById('wa-feedback');
+        if (!message) { alert('Veuillez saisir un message.'); return; }
+
+        const btn = document.querySelector('.btn-whatsapp-send');
+        btn.disabled = true;
+        btn.textContent = 'Envoi en cours…';
+        fb.style.display = 'none';
+
+        try {
+            const formData = new FormData();
+            formData.append('message', message);
+            const res = await fetch('/contacts/send-whatsapp/' + _waContactId, {
+                method: 'POST',
+                body: formData
+            });
+            const data = await res.json();
+            fb.style.display = 'block';
+            if (data.ok) {
+                fb.style.background = '#d1fae5';
+                fb.style.color = '#065f46';
+                fb.textContent = '✓ ' + data.msg;
+                setTimeout(() => closeModal('whatsapp-modal'), 2500);
+            } else {
+                fb.style.background = '#fee2e2';
+                fb.style.color = '#991b1b';
+                fb.textContent = '✗ ' + data.msg;
+            }
+        } catch (e) {
+            fb.style.display = 'block';
+            fb.style.background = '#fee2e2';
+            fb.style.color = '#991b1b';
+            fb.textContent = 'Erreur réseau : ' + e.message;
+        } finally {
+            btn.disabled = false;
+            btn.innerHTML = `<svg viewBox="0 0 24 24" fill="currentColor" style="width:16px;height:16px;"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347z"/><path d="M12 0C5.373 0 0 5.373 0 12c0 2.123.554 4.118 1.528 5.855L.057 23.882a.5.5 0 0 0 .612.612l6.058-1.464A11.944 11.944 0 0 0 12 24c6.627 0 12-5.373 12-12S18.627 0 12 0zm0 22c-1.907 0-3.694-.512-5.232-1.402l-.374-.217-3.875.936.965-3.799-.235-.386A9.944 9.944 0 0 1 2 12C2 6.477 6.477 2 12 2s10 4.477 10 10-4.477 10-10 10z"/></svg> Envoyer via Twilio`;
+        }
+    }
+
+    function showFeedback(el, ok, msg) {
+        el.textContent = msg;
+        el.className = 'msg-feedback msg-feedback--' + (ok ? 'ok' : 'err');
+        el.style.display = 'block';
+    }
+
+    const initQuery = document.getElementById('search-input')?.value;
+    if (initQuery) filterContacts(initQuery);
+</script>
+{% endblock %}

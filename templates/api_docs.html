@@ -1,0 +1,258 @@
+{% extends "base.html" %}
+{% block title %}API REST — Documentation{% endblock %}
+{% block content %}
+
+<div class="page-header">
+    <div>
+        <h1><i data-lucide="code-2" style="width:24px;height:24px;vertical-align:-4px;margin-right:.4rem;color:var(--primary);"></i>API REST publique</h1>
+        <p class="subtitle">Intégrez vos contacts et rendez-vous depuis n'importe quelle application</p>
+    </div>
+    <div class="page-actions">
+        <span class="api-base-badge">Base URL : <code>{{ base_url }}</code></span>
+    </div>
+</div>
+
+<!-- Auth notice -->
+<div class="api-notice">
+    <i data-lucide="shield-check" style="width:16px;height:16px;flex-shrink:0;color:#4f46e5;"></i>
+    <span>Toutes les routes nécessitent une session active (cookie de session Flask). Connectez-vous via <code>POST /</code> avant d'appeler ces endpoints.</span>
+</div>
+
+<!-- Endpoints -->
+<div class="api-sections">
+
+    <!-- CONTACTS -->
+    <div class="api-group">
+        <div class="api-group-title">
+            <i data-lucide="users" style="width:16px;height:16px;"></i> Contacts
+        </div>
+
+        {% set contact_endpoints = [
+            ("GET",    "/api/v1/contacts",           "Lister tous les contacts", "?q=omar&category=Patient"),
+            ("POST",   "/api/v1/contacts",           "Créer un contact", ""),
+            ("GET",    "/api/v1/contacts/{id}",      "Détail d'un contact", ""),
+            ("PUT",    "/api/v1/contacts/{id}",      "Modifier un contact", ""),
+            ("DELETE", "/api/v1/contacts/{id}",      "Supprimer un contact", ""),
+        ] %}
+
+        {% for method, path, desc, params in contact_endpoints %}
+        <div class="api-endpoint">
+            <div class="api-endpoint-head">
+                <span class="api-method api-method--{{ method|lower }}">{{ method }}</span>
+                <code class="api-path">{{ path }}</code>
+                <span class="api-desc">{{ desc }}</span>
+                {% if params %}<span class="api-params">{{ params }}</span>{% endif %}
+            </div>
+            {% if method == "GET" and path == "/api/v1/contacts" %}
+            <div class="api-example">
+                <div class="api-ex-label">Exemple de réponse</div>
+                <pre class="api-code">{
+  "ok": true,
+  "count": 2,
+  "contacts": [
+    { "id": 1, "name": "Ahmed Benchekroun", "email": "ahmed@example.com",
+      "phone": "+212600000001", "category": "Patient", "company": "" },
+    { "id": 2, "name": "Sara Idrissi", "email": "sara@example.com",
+      "phone": "+212600000002", "category": "Client", "company": "SARL Idrissi" }
+  ]
+}</pre>
+            </div>
+            {% endif %}
+            {% if method == "POST" %}
+            <div class="api-example">
+                <div class="api-ex-label">Corps de la requête (JSON)</div>
+                <pre class="api-code">{
+  "name":     "Nom Prénom",       <span class="api-comment">// obligatoire</span>
+  "email":    "email@exemple.com",<span class="api-comment">// obligatoire</span>
+  "phone":    "+212600000000",    <span class="api-comment">// obligatoire</span>
+  "category": "Patient",          <span class="api-comment">// optionnel</span>
+  "address":  "12 Rue Hassan II", <span class="api-comment">// optionnel</span>
+  "fonction": "Médecin",          <span class="api-comment">// optionnel</span>
+  "company":  "Clinique Al Amal"  <span class="api-comment">// optionnel</span>
+}</pre>
+            </div>
+            {% endif %}
+        </div>
+        {% endfor %}
+    </div>
+
+    <!-- APPOINTMENTS -->
+    <div class="api-group">
+        <div class="api-group-title">
+            <i data-lucide="calendar-days" style="width:16px;height:16px;"></i> Rendez-vous
+        </div>
+        <div class="api-endpoint">
+            <div class="api-endpoint-head">
+                <span class="api-method api-method--get">GET</span>
+                <code class="api-path">/api/v1/appointments</code>
+                <span class="api-desc">Lister les rendez-vous</span>
+                <span class="api-params">?date=2026-06-10</span>
+            </div>
+            <div class="api-example">
+                <div class="api-ex-label">Exemple de réponse</div>
+                <pre class="api-code">{
+  "ok": true,
+  "count": 1,
+  "appointments": [
+    { "id": 5, "contact_id": 1, "contact_name": "Ahmed Benchekroun",
+      "date": "2026-06-10", "time_slot": "09:30",
+      "title": "Consultation de suivi", "notes": "" }
+  ]
+}</pre>
+            </div>
+        </div>
+        <div class="api-endpoint">
+            <div class="api-endpoint-head">
+                <span class="api-method api-method--post">POST</span>
+                <code class="api-path">/appointments/book</code>
+                <span class="api-desc">Réserver un créneau</span>
+            </div>
+            <div class="api-example">
+                <div class="api-ex-label">Corps de la requête (JSON)</div>
+                <pre class="api-code">{
+  "contact_id": 1,
+  "date":       "2026-06-15",
+  "time_slot":  "10:00",
+  "title":      "Consultation",
+  "notes":      ""
+}</pre>
+            </div>
+        </div>
+        <div class="api-endpoint">
+            <div class="api-endpoint-head">
+                <span class="api-method api-method--post">POST</span>
+                <code class="api-path">/appointments/cancel/{id}</code>
+                <span class="api-desc">Annuler un rendez-vous</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- LABELS -->
+    <div class="api-group">
+        <div class="api-group-title">
+            <i data-lucide="tags" style="width:16px;height:16px;"></i> Étiquettes
+        </div>
+        <div class="api-endpoint">
+            <div class="api-endpoint-head">
+                <span class="api-method api-method--get">GET</span>
+                <code class="api-path">/api/v1/labels</code>
+                <span class="api-desc">Lister toutes les étiquettes avec compteurs</span>
+            </div>
+        </div>
+        <div class="api-endpoint">
+            <div class="api-endpoint-head">
+                <span class="api-method api-method--post">POST</span>
+                <code class="api-path">/api/v1/contacts/{id}/labels</code>
+                <span class="api-desc">Assigner des étiquettes à un contact</span>
+            </div>
+            <div class="api-example">
+                <div class="api-ex-label">Corps de la requête (JSON)</div>
+                <pre class="api-code">{ "label_ids": [1, 3, 7] }</pre>
+            </div>
+        </div>
+    </div>
+
+    <!-- CURL examples -->
+    <div class="api-group">
+        <div class="api-group-title">
+            <i data-lucide="terminal" style="width:16px;height:16px;"></i> Exemples cURL
+        </div>
+        <div class="api-endpoint">
+            <div class="api-ex-label" style="margin:.75rem 1.2rem .4rem;">Lister les contacts</div>
+            <pre class="api-code" style="margin:.3rem 1.2rem 1rem;">curl -b cookies.txt {{ base_url }}api/v1/contacts</pre>
+            <div class="api-ex-label" style="margin:.75rem 1.2rem .4rem;">Créer un contact</div>
+            <pre class="api-code" style="margin:.3rem 1.2rem 1rem;">curl -b cookies.txt -X POST {{ base_url }}api/v1/contacts \
+  -H "Content-Type: application/json" \
+  -d '{"name":"Test User","email":"test@example.com","phone":"+212600000000"}'</pre>
+            <div class="api-ex-label" style="margin:.75rem 1.2rem .4rem;">Se connecter (obtenir cookie)</div>
+            <pre class="api-code" style="margin:.3rem 1.2rem 1rem;">curl -c cookies.txt -X POST {{ base_url }} \
+  -d "username=admin&password=admin123"</pre>
+        </div>
+    </div>
+
+</div>
+
+<style>
+.api-notice {
+    display: flex; align-items: flex-start; gap: .75rem;
+    background: #eef2ff; border: 1px solid #c7d2fe;
+    border-radius: 10px; padding: .85rem 1.1rem;
+    font-size: .88rem; color: #3730a3;
+    margin-bottom: 1.5rem; line-height: 1.5;
+}
+[data-theme="dark"] .api-notice { background: #1e1b4b; border-color: #3730a3; color: #a5b4fc; }
+.api-notice code { background: rgba(79,70,229,.12); padding: .1rem .4rem; border-radius: 4px; font-size: .83rem; }
+
+.api-base-badge {
+    font-size: .82rem; color: var(--text-muted);
+    background: var(--surface2); border: 1px solid var(--border);
+    border-radius: 8px; padding: .4rem .85rem;
+}
+.api-base-badge code { color: var(--primary); font-weight: 600; }
+
+.api-sections { display: flex; flex-direction: column; gap: 1.25rem; }
+
+.api-group {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    overflow: hidden;
+    box-shadow: 0 1px 4px rgba(0,0,0,.05);
+}
+.api-group-title {
+    display: flex; align-items: center; gap: .5rem;
+    padding: .8rem 1.2rem;
+    font-weight: 700; font-size: .9rem;
+    background: var(--surface2);
+    border-bottom: 1px solid var(--border);
+    color: var(--text);
+}
+
+.api-endpoint {
+    border-bottom: 1px solid var(--border);
+}
+.api-endpoint:last-child { border-bottom: none; }
+.api-endpoint-head {
+    display: flex; align-items: center; flex-wrap: wrap; gap: .6rem;
+    padding: .75rem 1.2rem;
+}
+
+/* Method badges */
+.api-method {
+    display: inline-flex; align-items: center; justify-content: center;
+    min-width: 58px; height: 24px;
+    border-radius: 5px; font-size: .72rem; font-weight: 800;
+    letter-spacing: .04em; text-transform: uppercase; flex-shrink: 0;
+}
+.api-method--get    { background: #dbeafe; color: #1d4ed8; }
+.api-method--post   { background: #dcfce7; color: #15803d; }
+.api-method--put    { background: #fef9c3; color: #854d0e; }
+.api-method--delete { background: #fee2e2; color: #dc2626; }
+[data-theme="dark"] .api-method--get    { background: #1e3a5f; color: #93c5fd; }
+[data-theme="dark"] .api-method--post   { background: #052e16; color: #86efac; }
+[data-theme="dark"] .api-method--put    { background: #422006; color: #fde68a; }
+[data-theme="dark"] .api-method--delete { background: #450a0a; color: #fca5a5; }
+
+.api-path { font-size: .88rem; font-weight: 600; color: var(--text); }
+.api-desc { font-size: .85rem; color: var(--text-muted); }
+.api-params { font-size: .78rem; color: var(--primary); background: var(--primary-light); padding: .1rem .5rem; border-radius: 20px; }
+
+/* Code blocks */
+.api-example { padding: 0 1.2rem .9rem; }
+.api-ex-label { font-size: .72rem; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: var(--text-muted); margin-bottom: .35rem; }
+.api-code {
+    background: #0f172a;
+    color: #e2e8f0;
+    border-radius: 8px;
+    padding: .85rem 1rem;
+    font-size: .8rem;
+    line-height: 1.6;
+    overflow-x: auto;
+    margin: 0;
+    font-family: 'JetBrains Mono','Fira Code','Courier New',monospace;
+}
+[data-theme="dark"] .api-code { background: #020617; }
+.api-comment { color: #64748b; }
+</style>
+
+{% endblock %}
