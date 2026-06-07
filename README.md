@@ -171,8 +171,3 @@ Create a project in [Google Cloud Console](https://console.cloud.google.com), en
 This project is open source. Feel free to use, modify, and distribute it.
 
 ---
-
-## 👤 Author
-
-**Omar El Hassani**  
-GitHub: [@omarelhassani12](https://github.com/omarelhassani12)
