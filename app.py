@@ -16,6 +16,7 @@ from flask import (
     url_for, session, flash, Response, jsonify
 )
 from functools import wraps
+# small comment
 
 from database.db import init_db
 from auth.auth_manager import verify_login
