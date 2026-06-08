@@ -1,0 +1,5 @@
+flask
+bcrypt
+openpyxl
+python-dotenv
+twilio

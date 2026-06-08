@@ -1,0 +1,193 @@
+{% extends "base.html" %}
+{% block title %}Administrateurs{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div>
+        <h1>Administrateurs</h1>
+        <p class="subtitle">{{ admins|length }} compte{{ 's' if admins|length != 1 }}</p>
+    </div>
+    <div class="page-actions">
+        <button class="btn btn-primary" onclick="openAddAdminModal()">
+            <i data-lucide="user-plus" class="icon"></i> Nouvel admin
+        </button>
+    </div>
+</div>
+
+<div class="table-wrapper">
+    <table class="contacts-table">
+        <thead>
+            <tr>
+                <th>#</th>
+                <th>Nom d'utilisateur</th>
+                <th>Statut</th>
+                <th>Actions</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for admin in admins %}
+            <tr>
+                <td class="id-cell">{{ admin.id }}</td>
+                <td>
+                    <div class="contact-avatar contact-avatar--admin">{{ admin.username[0].upper() }}</div>
+                    <span class="contact-name">{{ admin.username }}</span>
+                    {% if admin.username == current_user %}
+                        <span class="badge-you">Vous</span>
+                    {% endif %}
+                </td>
+                <td><span class="badge-active">Actif</span></td>
+                <td class="actions-cell">
+                    {% if admin.username != current_user %}
+                    <button class="btn-icon btn-delete" title="Supprimer"
+                        onclick="openDeleteAdminModal({{ admin.id }}, '{{ admin.username }}')">
+                        <i data-lucide="trash-2" style="width:15px;height:15px;"></i>
+                    </button>
+                    {% else %}
+                    <span class="text-muted" style="font-size:0.8rem;">-</span>
+                    {% endif %}
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+
+<!-- ===== ADD Admin Modal ===== -->
+<div id="add-admin-modal" class="modal-overlay" onclick="closeModalOutside(event, 'add-admin-modal')">
+    <div class="modal-card">
+        <div class="modal-header">
+            <h2><i data-lucide="user-plus" class="icon"></i> Nouvel administrateur</h2>
+            <button class="modal-close" onclick="closeModal('add-admin-modal')" title="Fermer">
+                <i data-lucide="x"></i>
+            </button>
+        </div>
+        <form method="POST" action="{{ url_for('add_admin') }}" class="contact-form">
+            <div class="form-group">
+                <label for="admin-username">
+                    <i data-lucide="user" class="label-icon"></i> Nom d'utilisateur <span class="required">*</span>
+                </label>
+                <input type="text" id="admin-username" name="username"
+                       placeholder="Ex : jdupont" required autocomplete="off">
+            </div>
+            <div class="form-group">
+                <label for="admin-password">
+                    <i data-lucide="lock" class="label-icon"></i> Mot de passe <span class="required">*</span>
+                </label>
+                <div class="adm-pw-wrap">
+                    <input type="password" id="admin-password" name="password"
+                           placeholder="Min. 6 caractères" required minlength="6"
+                           autocomplete="new-password">
+                    <button type="button" class="adm-pw-toggle" id="adm-pw-btn"
+                            onclick="toggleAdminPw()" title="Afficher / masquer">
+                        <i data-lucide="eye" id="adm-pw-icon" style="width:16px;height:16px;"></i>
+                    </button>
+                </div>
+            </div>
+            <div class="form-actions">
+                <button type="button" class="btn btn-secondary" onclick="closeModal('add-admin-modal')">Annuler</button>
+                <button type="submit" class="btn btn-primary">
+                    <i data-lucide="check" class="icon"></i> Créer l'administrateur
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+
+
+<!-- ===== DELETE Admin Confirmation Modal ===== -->
+<div id="delete-admin-modal" class="modal-overlay" onclick="closeModalOutside(event, 'delete-admin-modal')">
+    <div class="modal-card modal-card--sm">
+        <div class="modal-header modal-header--danger">
+            <h2><i data-lucide="trash-2" class="icon"></i> Confirmer la suppression</h2>
+            <button class="modal-close" onclick="closeModal('delete-admin-modal')" title="Fermer">
+                <i data-lucide="x"></i>
+            </button>
+        </div>
+        <div class="modal-body">
+            <p>Êtes-vous sûr de vouloir supprimer l'administrateur <strong id="delete-admin-name"></strong> ?</p>
+            <p class="text-muted">Cette action est irréversible.</p>
+        </div>
+        <form method="POST" id="delete-admin-form" class="contact-form">
+            <div class="form-actions">
+                <button type="button" class="btn btn-secondary" onclick="closeModal('delete-admin-modal')">Annuler</button>
+                <button type="submit" class="btn btn-danger">
+                    <i data-lucide="trash-2" class="icon"></i> Supprimer
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+
+    function openModal(id) {
+        document.getElementById(id).classList.add('active');
+        document.body.style.overflow = 'hidden';
+    }
+    function closeModal(id) {
+        document.getElementById(id).classList.remove('active');
+        document.body.style.overflow = '';
+    }
+    function closeModalOutside(e, id) {
+        if (e.target === document.getElementById(id)) closeModal(id);
+    }
+    document.addEventListener('keydown', e => {
+        if (e.key === 'Escape') {
+            ['add-admin-modal','delete-admin-modal'].forEach(closeModal);
+        }
+    });
+
+    function openAddAdminModal() {
+        openModal('add-admin-modal');
+        setTimeout(() => document.getElementById('admin-username').focus(), 100);
+    }
+
+    function openDeleteAdminModal(id, name) {
+        document.getElementById('delete-admin-form').action = '/admins/delete/' + id;
+        document.getElementById('delete-admin-name').textContent = name;
+        openModal('delete-admin-modal');
+    }
+
+    function toggleAdminPw() {
+        const input = document.getElementById('admin-password');
+        const icon  = document.getElementById('adm-pw-icon');
+        const showing = input.type === 'text';
+        input.type = showing ? 'password' : 'text';
+        icon.setAttribute('data-lucide', showing ? 'eye' : 'eye-off');
+        lucide.createIcons();
+    }
+
+    /* Password wrapper CSS */
+    document.head.insertAdjacentHTML('beforeend', `<style>
+        .adm-pw-wrap {
+            position: relative;
+            display: flex;
+            align-items: center;
+        }
+        .adm-pw-wrap input {
+            width: 100%;
+            padding-right: 2.8rem;
+        }
+        .adm-pw-toggle {
+            position: absolute;
+            right: .7rem;
+            top: 50%;
+            transform: translateY(-50%);
+            background: none;
+            border: none;
+            cursor: pointer;
+            color: var(--text-muted);
+            padding: .2rem;
+            display: flex;
+            align-items: center;
+            transition: color .15s;
+            z-index: 2;
+        }
+        .adm-pw-toggle:hover { color: var(--primary); }
+    </style>`);
+</script>
+{% endblock %}

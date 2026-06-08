@@ -1,0 +1,1195 @@
+{% extends "base.html" %}
+{% block title %}Contacts{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div>
+        <h1 data-i18n="contacts_title">Mes Contacts</h1>
+        <p class="subtitle" id="contact-count">{{ contacts|length }} contact{{ 's' if contacts|length != 1 }}</p>
+    </div>
+    <div class="page-actions">
+        <button class="btn btn-action" onclick="openLabelsPanel()">
+            <i data-lucide="tags" style="width:15px;height:15px;"></i> Étiquettes
+        </button>
+        <button class="btn btn-action" onclick="openImportModal()">
+            <i data-lucide="upload" style="width:15px;height:15px;"></i> <span data-i18n="btn_import">Importer</span>
+        </button>
+        <a href="{{ url_for('export_csv') }}" class="btn btn-action">
+            <i data-lucide="download" style="width:15px;height:15px;"></i> <span data-i18n="btn_export">Exporter CSV</span>
+        </a>
+        <button class="btn btn-action btn-action--primary" onclick="openAddModal()">
+            <i data-lucide="user-plus" style="width:15px;height:15px;"></i> <span data-i18n="btn_new">Nouveau contact</span>
+        </button>
+        <button class="btn-bulk-delete" id="bulk-delete-btn" onclick="openBulkDeleteModal()">
+            <i data-lucide="trash-2" style="width:15px;height:15px;"></i>
+            <span data-i18n="bulk_delete">Supprimer la sélection</span>
+            <span id="bulk-count-badge" style="background:rgba(255,255,255,.25);border-radius:20px;padding:.1rem .5rem;font-size:.8rem;margin-left:.2rem;"></span>
+        </button>
+    </div>
+</div>
+
+<!-- Search -->
+<div class="search-form">
+    <div class="search-wrapper">
+        <i data-lucide="search" class="search-icon-svg"></i>
+        <input type="text" id="search-input"
+               data-i18n-placeholder="search_placeholder"
+               placeholder="Rechercher par nom, email ou téléphone…"
+               value="{{ query }}" class="search-input" oninput="filterContacts(this.value)">
+        <button class="search-clear" id="search-clear" onclick="clearSearch()" style="display:none">
+            <i data-lucide="x" style="width:14px;height:14px;"></i>
+        </button>
+    </div>
+</div>
+
+<!-- Category chips -->
+{% if categories %}
+<div class="cat-filter-bar">
+    <a href="{{ url_for('contacts', q=query) }}" class="cat-chip {% if not cat_filter %}active{% endif %}" data-i18n="filter_all">Tous</a>
+    {% for cat in categories %}
+    <a href="{{ url_for('contacts', q=query, cat=cat) }}" class="cat-chip {% if cat_filter == cat %}active{% endif %}">{{ cat }}</a>
+    {% endfor %}
+</div>
+{% endif %}
+
+<!-- Label filter chips -->
+{% if all_labels %}
+<div class="cat-filter-bar" style="margin-top:-.3rem;gap:.35rem;">
+    {% if lbl_filter %}
+    <a href="{{ url_for('contacts', q=query, cat=cat_filter) }}" class="cat-chip" style="background:var(--surface2);border-color:var(--border);">
+        <i data-lucide="x" style="width:11px;height:11px;vertical-align:-1px;"></i> Effacer étiquette
+    </a>
+    {% endif %}
+    {% for lbl in all_labels %}
+    <a href="{{ url_for('contacts', q=query, cat=cat_filter, lbl=lbl.id) }}"
+       class="cat-chip {% if lbl_filter|string == lbl.id|string %}active{% endif %}"
+       style="border-color:{{ lbl.color }};{% if lbl_filter|string == lbl.id|string %}background:{{ lbl.color }};color:#fff;{% else %}color:{{ lbl.color }};{% endif %}">
+        🏷 {{ lbl.name }}
+    </a>
+    {% endfor %}
+</div>
+{% endif %}
+
+{% if contacts %}
+<!-- Bulk action bar -->
+<div class="bulk-bar" id="bulk-bar" style="display:none !important;">
+    <input type="checkbox" id="select-all-chk" class="row-checkbox" onchange="toggleSelectAll(this.checked)" title="Tout sélectionner">
+    <span class="bulk-count" id="bulk-label">0 sélectionné(s)</span>
+    <button class="btn btn-danger" style="padding:.35rem .9rem;font-size:.83rem;" onclick="openBulkDeleteModal()">
+        <i data-lucide="trash-2" style="width:13px;height:13px;"></i> <span data-i18n="bulk_delete">Supprimer la sélection</span>
+    </button>
+</div>
+
+<div class="table-wrapper">
+    <table class="contacts-table" id="contacts-table">
+        <thead>
+            <tr>
+                <th class="th-checkbox">
+                    <input type="checkbox" id="select-all-chk2" class="row-checkbox" onchange="toggleSelectAll(this.checked)">
+                </th>
+                <th data-i18n="th_id">#</th>
+                <th data-i18n="th_name" class="th-sortable" onclick="sortTable('name')" style="cursor:pointer;user-select:none;">
+                    Nom <span class="sort-icon" id="sort-icon-name">↕</span>
+                </th>
+                <th data-i18n="th_email" class="th-sortable" onclick="sortTable('email')" style="cursor:pointer;user-select:none;">
+                    Email <span class="sort-icon" id="sort-icon-email">↕</span>
+                </th>
+                <th data-i18n="th_phone" class="th-sortable" onclick="sortTable('phone')" style="cursor:pointer;user-select:none;">
+                    Téléphone <span class="sort-icon" id="sort-icon-phone">↕</span>
+                </th>
+                <th data-i18n="th_category">Catégorie</th>
+                <th>Étiquettes</th>
+                <th data-i18n="th_actions">Actions</th>
+            </tr>
+        </thead>
+        <tbody id="contacts-tbody">
+            {% for contact in contacts %}
+            <tr data-id="{{ contact.id }}"
+                data-name="{{ contact.name|lower }}"
+                data-email="{{ contact.email|lower }}"
+                data-phone="{{ contact.phone }}"
+                data-category="{{ contact.category|lower }}">
+                <td style="padding-left:1rem;">
+                    <input type="checkbox" class="row-checkbox contact-chk" data-id="{{ contact.id }}" onchange="onRowCheck()">
+                </td>
+                <td class="id-cell">{{ loop.index }}</td>
+                <td>
+                    <div class="contact-avatar">{{ contact.name[0].upper() }}</div>
+                    <div class="contact-info">
+                        <span class="contact-name">{{ contact.name }}</span>
+                        {% if contact.fonction or contact.company %}
+                        <span class="contact-sub">{{ contact.fonction }}{% if contact.fonction and contact.company %} · {% endif %}{{ contact.company }}</span>
+                        {% endif %}
+                    </div>
+                </td>
+                <td><a href="mailto:{{ contact.email }}" class="email-link">{{ contact.email }}</a></td>
+                <td>{{ contact.phone }}</td>
+                <td>
+                    {% if contact.category %}
+                    <span class="cat-badge cat-{{ contact.category|lower|replace(' ','') }}">{{ contact.category }}</span>
+                    {% else %}<span class="cat-none">-</span>{% endif %}
+                </td>
+                <td class="labels-cell">
+                    {% for lbl in contact.label_list %}
+                    <span class="lbl-badge" style="background:{{ lbl.color }}20;color:{{ lbl.color }};border:1px solid {{ lbl.color }}50;">{{ lbl.name }}</span>
+                    {% endfor %}
+                    {% if not contact.label_list %}<span class="cat-none">-</span>{% endif %}
+                </td>
+                <td class="actions-cell">
+                    <button class="btn-icon btn-print" title="Imprimer fiche"
+                        onclick="printContactSheet({{ contact.id }}, '{{ contact.name|replace("'", "\\'") }}')">
+                        <i data-lucide="printer" style="width:15px;height:15px;"></i>
+                    </button>
+                    <button class="btn-icon btn-email" title="Email"
+                        onclick="openEmailModal({{ contact.id }}, '{{ contact.name|replace("'", "\\'") }}', '{{ contact.email }}')">
+                        <i data-lucide="mail" style="width:15px;height:15px;"></i>
+                    </button>
+                    <button class="btn-icon btn-whatsapp" title="WhatsApp"
+                        onclick="openWhatsappModal({{ contact.id }}, '{{ contact.name|replace("'", "\\'") }}', '{{ contact.phone }}')">
+                        <i data-lucide="message-circle" style="width:15px;height:15px;"></i>
+                    </button>
+                    <button class="btn-icon btn-edit" title="Modifier"
+                        onclick="openEditModal({{ contact.id }})">
+                        <i data-lucide="pencil" style="width:15px;height:15px;"></i>
+                    </button>
+                    <button class="btn-icon btn-delete" title="Supprimer"
+                        onclick="openDeleteModal({{ contact.id }}, '{{ contact.name|replace("'", "\\'") }}')">
+                        <i data-lucide="trash-2" style="width:15px;height:15px;"></i>
+                    </button>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    <div id="no-results" class="empty-state" style="display:none;border:none;">
+        <i data-lucide="search-x" class="empty-lucide-icon"></i>
+        <h3>Aucun résultat</h3>
+        <p>Essayez un autre terme de recherche.</p>
+    </div>
+</div>
+{% else %}
+<div class="empty-state">
+    {% if query %}
+        <i data-lucide="search-x" class="empty-lucide-icon"></i>
+        <h3>Aucun résultat pour « {{ query }} »</h3>
+        <p><a href="{{ url_for('contacts') }}">Voir tous les contacts</a></p>
+    {% else %}
+        <i data-lucide="users" class="empty-lucide-icon"></i>
+        <h3>Aucun contact pour le moment</h3>
+        <p>Commencez par <button class="link-btn" onclick="openAddModal()">ajouter un contact</button>.</p>
+    {% endif %}
+</div>
+{% endif %}
+
+
+<!-- ===== ADD Modal ===== -->
+<div id="add-modal" class="modal-overlay" onclick="closeModalOutside(event,'add-modal')">
+    <div class="modal-card">
+        <div class="modal-header">
+            <h2><i data-lucide="user-plus" class="icon"></i> <span data-i18n="modal_add">Nouveau contact</span></h2>
+            <button class="modal-close" onclick="closeModal('add-modal')"><i data-lucide="x"></i></button>
+        </div>
+        <form method="POST" action="{{ url_for('add_contact') }}" class="contact-form">
+            <div class="form-group">
+                <label for="add-name"><i data-lucide="user" class="label-icon"></i> <span data-i18n="label_name">Nom complet</span> <span class="required">*</span></label>
+                <input type="text" id="add-name" name="name" placeholder="Ex : Youssef Benali" required>
+            </div>
+            <div class="form-group">
+                <label for="add-email"><i data-lucide="mail" class="label-icon"></i> <span data-i18n="label_email">Adresse e-mail</span> <span class="required">*</span></label>
+                <input type="email" id="add-email" name="email" placeholder="Ex : youssef@example.com" required>
+            </div>
+            <div class="form-group">
+                <label for="add-phone"><i data-lucide="phone" class="label-icon"></i> <span data-i18n="label_phone">Numéro de téléphone</span> <span class="required">*</span></label>
+                <input type="text" id="add-phone" name="phone" placeholder="Ex : +212 6 00 00 00 00" required>
+            </div>
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="add-category"><i data-lucide="tag" class="label-icon"></i> <span data-i18n="label_category">Catégorie</span></label>
+                    <select id="add-category" name="category" class="form-select">
+                        <option value="">- Sélectionner -</option>
+                        {% for cat in categories %}<option value="{{ cat }}">{{ cat }}</option>{% endfor %}
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="add-company"><i data-lucide="building-2" class="label-icon"></i> <span data-i18n="label_company">Entreprise</span></label>
+                    <input type="text" id="add-company" name="company" placeholder="Ex : Clinique Al Amal">
+                </div>
+            </div>
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="add-fonction"><i data-lucide="briefcase" class="label-icon"></i> <span data-i18n="label_fonction">Fonction</span></label>
+                    <input type="text" id="add-fonction" name="fonction" placeholder="Ex : Médecin généraliste">
+                </div>
+                <div class="form-group">
+                    <label for="add-address"><i data-lucide="map-pin" class="label-icon"></i> <span data-i18n="label_address">Adresse</span></label>
+                    <input type="text" id="add-address" name="address" placeholder="Ex : 12 Rue Hassan II">
+                </div>
+            </div>
+            <!-- Labels selector -->
+            <div class="form-group" id="add-labels-group">
+                <label><i data-lucide="tags" class="label-icon"></i> Étiquettes</label>
+                <div class="label-picker" id="add-label-picker">
+                    {% for lbl in all_labels %}
+                    <label class="lbl-check-item">
+                        <input type="checkbox" name="label_ids" value="{{ lbl.id }}">
+                        <span class="lbl-chip" style="background:{{ lbl.color }}20;color:{{ lbl.color }};border:1px solid {{ lbl.color }}50;">{{ lbl.name }}</span>
+                    </label>
+                    {% endfor %}
+                    {% if not all_labels %}<span class="text-muted" style="font-size:.82rem;">Aucune étiquette – créez-en via le bouton Étiquettes.</span>{% endif %}
+                </div>
+            </div>
+            <div class="form-actions">
+                <button type="button" class="btn btn-secondary" onclick="closeModal('add-modal')" data-i18n="btn_cancel">Annuler</button>
+                <button type="submit" class="btn btn-primary"><i data-lucide="check" class="icon"></i> <span data-i18n="btn_add">Ajouter le contact</span></button>
+            </div>
+        </form>
+    </div>
+</div>
+
+
+<!-- ===== EDIT Modal ===== -->
+<div id="edit-modal" class="modal-overlay" onclick="closeModalOutside(event,'edit-modal')">
+    <div class="modal-card">
+        <div class="modal-header">
+            <h2><i data-lucide="pencil" class="icon"></i> <span data-i18n="modal_edit">Modifier le contact</span></h2>
+            <button class="modal-close" onclick="closeModal('edit-modal')"><i data-lucide="x"></i></button>
+        </div>
+        <form method="POST" id="edit-form" class="contact-form">
+            <div class="form-group">
+                <label for="edit-name"><i data-lucide="user" class="label-icon"></i> <span data-i18n="label_name">Nom complet</span> <span class="required">*</span></label>
+                <input type="text" id="edit-name" name="name" required>
+            </div>
+            <div class="form-group">
+                <label for="edit-email"><i data-lucide="mail" class="label-icon"></i> <span data-i18n="label_email">Adresse e-mail</span> <span class="required">*</span></label>
+                <input type="email" id="edit-email" name="email" required>
+            </div>
+            <div class="form-group">
+                <label for="edit-phone"><i data-lucide="phone" class="label-icon"></i> <span data-i18n="label_phone">Téléphone</span> <span class="required">*</span></label>
+                <input type="text" id="edit-phone" name="phone" required>
+            </div>
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="edit-category"><i data-lucide="tag" class="label-icon"></i> <span data-i18n="label_category">Catégorie</span></label>
+                    <select id="edit-category" name="category" class="form-select">
+                        <option value="">- Sélectionner -</option>
+                        {% for cat in categories %}<option value="{{ cat }}">{{ cat }}</option>{% endfor %}
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="edit-company"><i data-lucide="building-2" class="label-icon"></i> <span data-i18n="label_company">Entreprise</span></label>
+                    <input type="text" id="edit-company" name="company">
+                </div>
+            </div>
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="edit-fonction"><i data-lucide="briefcase" class="label-icon"></i> <span data-i18n="label_fonction">Fonction</span></label>
+                    <input type="text" id="edit-fonction" name="fonction">
+                </div>
+                <div class="form-group">
+                    <label for="edit-address"><i data-lucide="map-pin" class="label-icon"></i> <span data-i18n="label_address">Adresse</span></label>
+                    <input type="text" id="edit-address" name="address">
+                </div>
+            </div>
+            <!-- Labels selector for edit -->
+            <div class="form-group">
+                <label><i data-lucide="tags" class="label-icon"></i> Étiquettes</label>
+                <div class="label-picker" id="edit-label-picker">
+                    {% for lbl in all_labels %}
+                    <label class="lbl-check-item">
+                        <input type="checkbox" name="label_ids" value="{{ lbl.id }}" class="edit-lbl-chk" data-label-id="{{ lbl.id }}">
+                        <span class="lbl-chip" style="background:{{ lbl.color }}20;color:{{ lbl.color }};border:1px solid {{ lbl.color }}50;">{{ lbl.name }}</span>
+                    </label>
+                    {% endfor %}
+                    {% if not all_labels %}<span class="text-muted" style="font-size:.82rem;">Aucune étiquette disponible.</span>{% endif %}
+                </div>
+            </div>
+            <div class="form-actions">
+                <button type="button" class="btn btn-secondary" onclick="closeModal('edit-modal')" data-i18n="btn_cancel">Annuler</button>
+                <button type="submit" class="btn btn-primary"><i data-lucide="check" class="icon"></i> <span data-i18n="btn_save">Enregistrer</span></button>
+            </div>
+        </form>
+    </div>
+</div>
+
+
+<!-- ===== DELETE Modal ===== -->
+<div id="delete-modal" class="modal-overlay" onclick="closeModalOutside(event,'delete-modal')">
+    <div class="modal-card modal-card--sm">
+        <div class="modal-header modal-header--danger">
+            <h2><i data-lucide="trash-2" class="icon"></i> <span data-i18n="modal_delete">Confirmer la suppression</span></h2>
+            <button class="modal-close" onclick="closeModal('delete-modal')"><i data-lucide="x"></i></button>
+        </div>
+        <div class="modal-body">
+            <p>Supprimer <strong id="delete-name"></strong> ?</p>
+            <p class="text-muted" style="margin-top:.4rem;">Cette action est irréversible.</p>
+        </div>
+        <form method="POST" id="delete-form" class="contact-form">
+            <div class="form-actions">
+                <button type="button" class="btn btn-secondary" onclick="closeModal('delete-modal')" data-i18n="btn_cancel">Annuler</button>
+                <button type="submit" class="btn btn-danger"><i data-lucide="trash-2" class="icon"></i> <span data-i18n="btn_delete">Supprimer</span></button>
+            </div>
+        </form>
+    </div>
+</div>
+
+
+<!-- ===== BULK DELETE Modal ===== -->
+<div id="bulk-delete-modal" class="modal-overlay" onclick="closeModalOutside(event,'bulk-delete-modal')">
+    <div class="modal-card modal-card--sm">
+        <div class="modal-header modal-header--danger">
+            <h2><i data-lucide="trash-2" class="icon"></i> Suppression groupée</h2>
+            <button class="modal-close" onclick="closeModal('bulk-delete-modal')"><i data-lucide="x"></i></button>
+        </div>
+        <div class="modal-body">
+            <p id="bulk-delete-msg">Supprimer les contacts sélectionnés ?</p>
+            <p class="text-muted" style="margin-top:.4rem;">Cette action est irréversible.</p>
+        </div>
+        <div class="contact-form">
+            <div class="form-actions">
+                <button class="btn btn-secondary" onclick="closeModal('bulk-delete-modal')" data-i18n="btn_cancel">Annuler</button>
+                <button class="btn btn-danger" onclick="executeBulkDelete()">
+                    <i data-lucide="trash-2" class="icon"></i> <span data-i18n="btn_delete">Supprimer</span>
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+
+<!-- ===== IMPORT Modal ===== -->
+<div id="import-modal" class="modal-overlay" onclick="closeModalOutside(event,'import-modal')">
+    <div class="modal-card">
+        <div class="modal-header">
+            <h2><i data-lucide="upload" class="icon"></i> Importer des contacts</h2>
+            <button class="modal-close" onclick="closeModal('import-modal')"><i data-lucide="x"></i></button>
+        </div>
+        <div class="modal-body">
+            <div class="import-info">
+                <i data-lucide="info" style="width:16px;height:16px;flex-shrink:0;margin-top:2px;"></i>
+                <div>
+                    <p>Formats acceptés : <strong>CSV</strong> ou <strong>Excel (.xlsx)</strong></p>
+                    <p class="text-muted">Colonnes requises : <code>name</code>, <code>email</code>, <code>phone</code></p>
+                </div>
+            </div>
+            <form method="POST" action="{{ url_for('import_contacts') }}" enctype="multipart/form-data" class="contact-form" id="import-form">
+                <div class="form-group">
+                    <label><i data-lucide="file-spreadsheet" class="label-icon"></i> Fichier <span class="required">*</span></label>
+                    <div class="file-drop-zone" id="drop-zone" onclick="document.getElementById('import-file').click()">
+                        <i data-lucide="upload-cloud" style="width:32px;height:32px;color:var(--primary);margin-bottom:8px;"></i>
+                        <p id="drop-label">Glissez-déposez ou <span class="link-btn">parcourir</span></p>
+                        <p class="text-muted" style="font-size:.78rem;">CSV, XLSX - max 5 Mo</p>
+                    </div>
+                    <input type="file" id="import-file" name="import_file" accept=".csv,.xlsx,.xls" style="display:none" onchange="onFileSelected(this)">
+                </div>
+                <div class="form-actions">
+                    <button type="button" class="btn btn-secondary" onclick="closeModal('import-modal')">Annuler</button>
+                    <button type="submit" class="btn btn-primary" id="import-submit-btn" disabled>
+                        <i data-lucide="upload" class="icon"></i> Importer
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+
+<!-- ===== EMAIL Modal ===== -->
+<div id="email-modal" class="modal-overlay" onclick="closeModalOutside(event,'email-modal')">
+    <div class="modal-card">
+        <div class="modal-header modal-header--email">
+            <h2><i data-lucide="send" class="icon"></i> Envoyer un e-mail</h2>
+            <button class="modal-close" onclick="closeModal('email-modal')"><i data-lucide="x"></i></button>
+        </div>
+        <div class="modal-body">
+            <div class="msg-recipient-bar">
+                <i data-lucide="user" style="width:14px;height:14px;flex-shrink:0;"></i>
+                <span id="email-recipient-label"></span>
+            </div>
+        </div>
+        <div class="contact-form" style="padding:0 1.5rem 1.5rem;">
+            <div class="form-group">
+                <label for="email-subject"><i data-lucide="tag" class="label-icon"></i> Objet <span class="required">*</span></label>
+                <input type="text" id="email-subject" placeholder="Ex : Rappel de réunion">
+            </div>
+            <div class="form-group">
+                <label for="email-body"><i data-lucide="align-left" class="label-icon"></i> Message <span class="required">*</span></label>
+                <textarea id="email-body" rows="5" style="resize:vertical;min-height:110px;" placeholder="Votre message…"></textarea>
+            </div>
+            <div id="email-feedback" class="msg-feedback" style="display:none;"></div>
+            <div class="form-actions">
+                <button class="btn btn-secondary" onclick="closeModal('email-modal')">Annuler</button>
+                <button class="btn btn-email-send" id="email-send-btn" onclick="submitEmail()">
+                    <i data-lucide="send" class="icon"></i> Envoyer
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+
+<!-- ===== WHATSAPP Modal ===== -->
+<div id="whatsapp-modal" class="modal-overlay" onclick="closeModalOutside(event,'whatsapp-modal')">
+    <div class="wa-modal-card">
+        <div class="wa-modal-header">
+            <svg viewBox="0 0 24 24" fill="currentColor" style="width:22px;height:22px;flex-shrink:0">
+                <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347z"/>
+                <path d="M12 0C5.373 0 0 5.373 0 12c0 2.123.554 4.118 1.528 5.855L.057 23.882a.5.5 0 0 0 .612.612l6.058-1.464A11.944 11.944 0 0 0 12 24c6.627 0 12-5.373 12-12S18.627 0 12 0zm0 22c-1.907 0-3.694-.512-5.232-1.402l-.374-.217-3.875.936.965-3.799-.235-.386A9.944 9.944 0 0 1 2 12C2 6.477 6.477 2 12 2s10 4.477 10 10-4.477 10-10 10z"/>
+            </svg>
+            <h2>WhatsApp</h2>
+            <span class="wa-recipient-chip" id="wa-recipient-label">-</span>
+            <button class="modal-close" onclick="closeModal('whatsapp-modal')" style="background:rgba(255,255,255,.15);border-radius:50%;width:30px;height:30px;">
+                <i data-lucide="x" style="width:15px;height:15px;color:#fff;"></i>
+            </button>
+        </div>
+        <div class="wa-modal-body">
+            <div class="wa-left">
+                <div class="wa-template-section">
+                    <span class="wa-tpl-label">⚡ Modèles rapides</span>
+                    <div class="wa-tpl-grid">
+                        <button class="wa-tpl-btn" onclick="applyTemplate('greeting',event)"><span class="tpl-icon">👋</span>Salutation</button>
+                        <button class="wa-tpl-btn" onclick="applyTemplate('appointment',event)"><span class="tpl-icon">📅</span>Rendez-vous</button>
+                        <button class="wa-tpl-btn" onclick="applyTemplate('followup',event)"><span class="tpl-icon">🔔</span>Suivi</button>
+                        <button class="wa-tpl-btn" onclick="applyTemplate('invoice',event)"><span class="tpl-icon">💳</span>Paiement</button>
+                        <button class="wa-tpl-btn" onclick="applyTemplate('promo',event)"><span class="tpl-icon">🎁</span>Promo</button>
+                        <button class="wa-tpl-btn" onclick="applyTemplate('custom',event)"><span class="tpl-icon">✏️</span>Libre</button>
+                    </div>
+                </div>
+                <textarea class="wa-textarea" id="wa-message" placeholder="Saisissez votre message…" oninput="updatePreview()"></textarea>
+                <div class="wa-char-count"><span id="wa-char-num">0</span> caractères</div>
+            </div>
+            <div class="wa-right">
+                <div class="wa-right-title">📱 Aperçu</div>
+                <div class="wa-phone-bubble" id="wa-preview-bubble">Votre message apparaîtra ici…</div>
+                <div class="wa-phone-time" id="wa-preview-time"></div>
+            </div>
+        </div>
+        <div class="wa-footer">
+            <div class="wa-feedback" id="wa-feedback"></div>
+            <button class="wa-cancel-btn" onclick="closeModal('whatsapp-modal')">Annuler</button>
+            <button class="wa-send-btn" id="wa-send-btn" onclick="openWhatsapp()">
+                <svg viewBox="0 0 24 24" fill="currentColor" style="width:16px;height:16px;"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg>
+                Envoyer
+            </button>
+        </div>
+    </div>
+</div>
+
+
+<!-- ===== LABELS PANEL ===== -->
+<div id="labels-panel-overlay" class="modal-overlay" onclick="closeModalOutside(event,'labels-panel-overlay')" style="align-items:flex-start;padding-top:5rem;">
+    <div class="modal-card" style="max-width:480px;width:100%;">
+        <div class="modal-header" style="background:linear-gradient(135deg,#6366f1,#8b5cf6);">
+            <h2 style="color:#fff;"><i data-lucide="tags" class="icon"></i> Gérer les étiquettes</h2>
+            <button class="modal-close" onclick="closeModal('labels-panel-overlay')" style="color:#fff;"><i data-lucide="x"></i></button>
+        </div>
+        <div class="modal-body">
+            <!-- Create new label -->
+            <div style="display:flex;gap:.5rem;margin-bottom:1rem;align-items:center;">
+                <input type="text" id="new-label-name" placeholder="Nom de l'étiquette…"
+                       style="flex:1;padding:.5rem .75rem;border:1.5px solid var(--border);border-radius:8px;background:var(--surface2);color:var(--text);font-size:.9rem;">
+                <input type="color" id="new-label-color" value="#6366f1"
+                       style="width:38px;height:38px;border:none;cursor:pointer;background:none;padding:0;">
+                <button class="btn btn-primary" style="padding:.5rem 1rem;white-space:nowrap;" onclick="createLabel()">
+                    <i data-lucide="plus" style="width:14px;height:14px;"></i> Créer
+                </button>
+            </div>
+            <!-- Labels list -->
+            <div id="labels-list" style="display:flex;flex-direction:column;gap:.5rem;max-height:320px;overflow-y:auto;">
+                <div style="text-align:center;color:var(--text-muted);padding:1rem;">Chargement…</div>
+            </div>
+            <div id="labels-panel-feedback" style="display:none;margin-top:.5rem;padding:.4rem .75rem;border-radius:8px;font-size:.85rem;"></div>
+        </div>
+    </div>
+</div>
+
+<!-- ===== PRINT MODAL (client-side) ===== -->
+<div id="print-modal" class="modal-overlay" onclick="closeModalOutside(event,'print-modal')">
+    <div class="modal-card" style="max-width:560px;">
+        <div class="modal-header">
+            <h2><i data-lucide="printer" class="icon"></i> Fiche contact</h2>
+            <div style="display:flex;gap:.5rem;">
+                <button class="btn btn-primary" onclick="doPrint()" style="padding:.35rem .9rem;font-size:.85rem;">
+                    <i data-lucide="printer" style="width:14px;height:14px;"></i> Imprimer
+                </button>
+                <button class="modal-close" onclick="closeModal('print-modal')"><i data-lucide="x"></i></button>
+            </div>
+        </div>
+        <div id="print-content" class="modal-body" style="padding:1.5rem;">
+            <!-- filled dynamically -->
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+
+{% block scripts %}
+<script>
+// ── Modal helpers ──
+function openModal(id) { document.getElementById(id).classList.add('active'); document.body.style.overflow='hidden'; }
+function closeModal(id) { document.getElementById(id).classList.remove('active'); document.body.style.overflow=''; }
+function closeModalOutside(e,id) { if(e.target===document.getElementById(id)) closeModal(id); }
+document.addEventListener('keydown', e => {
+    if(e.key==='Escape') ['add-modal','edit-modal','delete-modal','import-modal','bulk-delete-modal',
+                          'email-modal','whatsapp-modal','labels-panel-overlay','print-modal'].forEach(closeModal);
+});
+
+// ── Add modal ──
+function openAddModal() { openModal('add-modal'); setTimeout(()=>document.getElementById('add-name').focus(),100); }
+
+// ── Edit modal ──
+function openEditModal(id) {
+    fetch('/contacts/edit/'+id).then(r=>r.json()).then(c=>{
+        document.getElementById('edit-form').action='/contacts/edit/'+id;
+        document.getElementById('edit-name').value=c.name||'';
+        document.getElementById('edit-email').value=c.email||'';
+        document.getElementById('edit-phone').value=c.phone||'';
+        document.getElementById('edit-category').value=c.category||'';
+        document.getElementById('edit-company').value=c.company||'';
+        document.getElementById('edit-fonction').value=c.fonction||'';
+        document.getElementById('edit-address').value=c.address||'';
+        // Set label checkboxes
+        const labelIds = c.label_ids || [];
+        document.querySelectorAll('.edit-lbl-chk').forEach(chk => {
+            chk.checked = labelIds.includes(parseInt(chk.dataset.labelId));
+        });
+        openModal('edit-modal');
+        setTimeout(()=>document.getElementById('edit-name').focus(),100);
+    });
+}
+
+// ── Delete modal ──
+function openDeleteModal(id,name) {
+    document.getElementById('delete-form').action='/contacts/delete/'+id;
+    document.getElementById('delete-name').textContent=name;
+    openModal('delete-modal');
+}
+
+// ── Bulk select ──
+let _selectedIds = new Set();
+
+function onRowCheck() {
+    _selectedIds.clear();
+    document.querySelectorAll('.contact-chk:checked').forEach(chk => _selectedIds.add(chk.dataset.id));
+    updateBulkUI();
+}
+
+function toggleSelectAll(checked) {
+    document.querySelectorAll('.contact-chk').forEach(chk => {
+        const row = chk.closest('tr');
+        if(row && row.style.display !== 'none') {
+            chk.checked = checked;
+            row.classList.toggle('row-selected', checked);
+            if(checked) _selectedIds.add(chk.dataset.id);
+        }
+    });
+    if(!checked) _selectedIds.clear();
+    const chk1 = document.getElementById('select-all-chk');
+    const chk2 = document.getElementById('select-all-chk2');
+    if(chk1) chk1.checked = checked;
+    if(chk2) chk2.checked = checked;
+    updateBulkUI();
+}
+
+function updateBulkUI() {
+    const n = _selectedIds.size;
+    const total = document.querySelectorAll('.contact-chk').length;
+    const bar = document.getElementById('bulk-bar');
+    const topBtn = document.getElementById('bulk-delete-btn');
+    const badge = document.getElementById('bulk-count-badge');
+    const label = document.getElementById('bulk-label');
+    document.querySelectorAll('.contact-chk').forEach(chk => {
+        chk.closest('tr').classList.toggle('row-selected', chk.checked);
+    });
+    if(bar) bar.classList.toggle('visible', n>0);
+    if(topBtn) topBtn.classList.toggle('visible', n>0);
+    if(badge) badge.textContent = n>0 ? n : '';
+    if(label) label.textContent = n + ' sélectionné' + (n>1?'s':'');
+    // Sync both select-all checkboxes with indeterminate state
+    ['select-all-chk', 'select-all-chk2'].forEach(id => {
+        const el = document.getElementById(id);
+        if (!el) return;
+        if (n === 0) { el.checked = false; el.indeterminate = false; }
+        else if (n === total) { el.checked = true; el.indeterminate = false; }
+        else { el.checked = false; el.indeterminate = true; }
+    });
+}
+
+function openBulkDeleteModal() {
+    const n = _selectedIds.size;
+    if(n===0) return;
+    document.getElementById('bulk-delete-msg').textContent =
+        'Supprimer ' + n + ' contact' + (n>1?'s':'') + ' sélectionné' + (n>1?'s':'') + ' ?';
+    openModal('bulk-delete-modal');
+}
+
+function executeBulkDelete() {
+    const ids = Array.from(_selectedIds);
+    fetch('/contacts/bulk-delete', {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({ids})
+    }).then(r=>r.json()).then(data=>{
+        closeModal('bulk-delete-modal');
+        if(data.ok) {
+            ids.forEach(id => {
+                const row = document.querySelector(`tr[data-id="${id}"]`);
+                if(row) row.remove();
+            });
+            _selectedIds.clear();
+            updateBulkUI();
+            const remaining = document.querySelectorAll('#contacts-tbody tr').length;
+            const countEl = document.getElementById('contact-count');
+            if(countEl) countEl.textContent = remaining + ' contact' + (remaining!==1?'s':'');
+            showToast('✅ ' + data.msg);
+        } else {
+            showToast('❌ ' + data.msg, true);
+        }
+    });
+}
+
+// ── Toast notification ──
+function showToast(msg, isError=false) {
+    let t = document.getElementById('toast-global');
+    if(!t) {
+        t = document.createElement('div'); t.id='toast-global';
+        Object.assign(t.style, {
+            position:'fixed',bottom:'1.5rem',left:'50%',transform:'translateX(-50%)',
+            padding:'.7rem 1.4rem',borderRadius:'10px',fontWeight:'600',fontSize:'.9rem',
+            boxShadow:'0 8px 24px rgba(0,0,0,.2)',zIndex:'9999',transition:'opacity .3s',
+            whiteSpace:'nowrap'
+        });
+        document.body.appendChild(t);
+    }
+    t.textContent = msg;
+    t.style.background = isError ? 'var(--danger)' : 'var(--success)';
+    t.style.color = '#fff';
+    t.style.opacity = '1';
+    clearTimeout(t._timeout);
+    t._timeout = setTimeout(()=>{ t.style.opacity='0'; }, 2800);
+}
+
+// ── Import modal ──
+function openImportModal() {
+    document.getElementById('import-file').value='';
+    document.getElementById('drop-label').innerHTML='Glissez-déposez ou <span class="link-btn">parcourir</span>';
+    document.getElementById('import-submit-btn').disabled=true;
+    openModal('import-modal');
+}
+function onFileSelected(input) {
+    if(input.files && input.files[0]) {
+        const f=input.files[0];
+        document.getElementById('drop-label').innerHTML='<strong>'+f.name+'</strong> ('+(f.size/1024).toFixed(1)+' Ko)';
+        document.getElementById('import-submit-btn').disabled=false;
+    }
+}
+const dropZone=document.getElementById('drop-zone');
+if(dropZone){
+    dropZone.addEventListener('dragover',e=>{e.preventDefault();dropZone.style.borderColor='var(--primary)';});
+    dropZone.addEventListener('dragleave',()=>{dropZone.style.borderColor='';});
+    dropZone.addEventListener('drop',e=>{
+        e.preventDefault(); dropZone.style.borderColor='';
+        const fi=document.getElementById('import-file');
+        fi.files=e.dataTransfer.files; onFileSelected(fi);
+    });
+}
+
+// ── Search & filter ──
+function filterContacts(query) {
+    const q=query.trim().toLowerCase();
+    const rows=document.querySelectorAll('#contacts-tbody tr');
+    document.getElementById('search-clear').style.display=q?'flex':'none';
+    let visible=0;
+    rows.forEach(row=>{
+        const match=!q||
+            (row.dataset.name||'').includes(q)||
+            (row.dataset.email||'').includes(q)||
+            (row.dataset.phone||'').includes(q)||
+            (row.dataset.category||'').includes(q);
+        row.style.display=match?'':'none';
+        if(match) visible++;
+    });
+    const countEl=document.getElementById('contact-count');
+    if(countEl) countEl.textContent=visible+' contact'+(visible!==1?'s':'')+(q?' trouvé'+(visible!==1?'s':''):'');
+    const nr=document.getElementById('no-results');
+    const tb=document.getElementById('contacts-tbody');
+    if(nr){ nr.style.display=(visible===0&&q)?'block':'none'; if(tb) tb.style.display=(visible===0&&q)?'none':''; }
+}
+function clearSearch() { const i=document.getElementById('search-input'); i.value=''; filterContacts(''); i.focus(); }
+
+// ── Email modal ──
+let _emailContactId=null;
+function openEmailModal(id,name,email) {
+    _emailContactId=id;
+    document.getElementById('email-recipient-label').textContent=name+' <'+email+'>';
+    document.getElementById('email-subject').value='';
+    document.getElementById('email-body').value='';
+    const fb=document.getElementById('email-feedback'); fb.style.display='none';
+    document.getElementById('email-send-btn').disabled=false;
+    openModal('email-modal');
+    setTimeout(()=>document.getElementById('email-subject').focus(),100);
+}
+async function submitEmail() {
+    const subject=document.getElementById('email-subject').value.trim();
+    const body=document.getElementById('email-body').value.trim();
+    const fb=document.getElementById('email-feedback');
+    const btn=document.getElementById('email-send-btn');
+    if(!subject||!body){ showFeedback(fb,false,'Veuillez remplir l\'objet et le message.'); return; }
+    btn.disabled=true; btn.innerHTML='<i data-lucide="loader-2" class="icon spin"></i> Envoi…'; lucide.createIcons();
+    const fd=new FormData(); fd.append('subject',subject); fd.append('body',body);
+    try {
+        const res=await fetch('/contacts/send-email/'+_emailContactId,{method:'POST',body:fd});
+        const data=await res.json();
+        showFeedback(fb,data.ok,data.msg);
+        if(data.ok){ btn.innerHTML='<i data-lucide="check" class="icon"></i> Envoyé !'; setTimeout(()=>closeModal('email-modal'),1800); }
+        else{ btn.disabled=false; btn.innerHTML='<i data-lucide="send" class="icon"></i> Envoyer'; }
+    } catch(e){ showFeedback(fb,false,'Erreur réseau.'); btn.disabled=false; btn.innerHTML='<i data-lucide="send" class="icon"></i> Envoyer'; }
+    lucide.createIcons();
+}
+
+// ── WhatsApp modal ──
+let _waContactId=null, _waContactName='';
+// const WA_TEMPLATES = {
+//     greeting:    n=>`👋 Bonjour ${n},\n\nJ'espère que vous allez bien.\n\nCordialement 🙏`,
+//     appointment: n=>`📅 Rappel RDV\n\nBonjour ${n},\n\n🕐 Date : [DATE]\n📍 Lieu : [LIEU]\n\nMerci de confirmer : OUI / NON`,
+//     followup:    n=>`🔔 Suivi\n\nBonjour ${n},\n\nNous revenons concernant votre dossier.\n⏳ Délai : [DATE]`,
+//     invoice:     n=>`💳 Rappel paiement\n\nBonjour ${n},\n\n💰 Montant : [MAD]\n📆 Échéance : [DATE]`,
+//     promo:       n=>`🎁 Offre pour vous, ${n} !\n\n✨ [DÉTAIL]\n⏰ Valable jusqu'au [DATE]`,
+//     custom:      n=>`Bonjour ${n},\n\n`
+// };
+
+const getTodayDate = () => new Date().toLocaleDateString('fr-FR', {
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric'
+});
+
+const WA_TEMPLATES = {
+    greeting:    n => `👋 Bonjour ${n},\n\nJ'espère que vous allez bien.\n\nCordialement 🙏`,
+    appointment: (n, lieu, date = getTodayDate()) => `📅 Rappel RDV\n\nBonjour ${n},\n\n🕐 Date : ${date}\n📍 Lieu : ${lieu}\n\nMerci de confirmer : OUI / NON`,
+    followup:    (n, date = getTodayDate()) => `🔔 Suivi\n\nBonjour ${n},\n\nNous revenons concernant votre dossier.\n⏳ Délai : ${date}`,
+    invoice:     (n, mad, date = getTodayDate()) => `💳 Rappel paiement\n\nBonjour ${n},\n\n💰 Montant : ${mad}\n📆 Échéance : ${date}`,
+    promo:       (n, detail, date = getTodayDate()) => `🎁 Offre pour vous, ${n} !\n\n✨ ${detail}\n⏰ Valable jusqu'au ${date}`,
+    custom:      n => `Bonjour ${n},\n\n`
+};
+function applyTemplate(key,e) {
+    document.querySelectorAll('.wa-tpl-btn').forEach(b=>b.classList.remove('active'));
+    e.target.closest('.wa-tpl-btn').classList.add('active');
+    const ta=document.getElementById('wa-message');
+    ta.value=WA_TEMPLATES[key](_waContactName);
+    updatePreview(); ta.focus();
+}
+function updatePreview() {
+    const txt=document.getElementById('wa-message').value;
+    document.getElementById('wa-char-num').textContent=txt.length;
+    document.getElementById('wa-preview-bubble').textContent=txt||'Votre message apparaîtra ici…';
+    const now=new Date();
+    document.getElementById('wa-preview-time').textContent=
+        now.getHours().toString().padStart(2,'0')+':'+now.getMinutes().toString().padStart(2,'0')+' ✓✓';
+}
+function openWhatsappModal(id,name,phone) {
+    _waContactId=id; _waContactName=name;
+    document.getElementById('wa-recipient-label').textContent=name+' · '+phone;
+    document.getElementById('wa-message').value='';
+    document.getElementById('wa-feedback').style.display='none';
+    document.getElementById('wa-preview-bubble').textContent='Votre message apparaîtra ici…';
+    document.getElementById('wa-preview-time').textContent='';
+    document.getElementById('wa-char-num').textContent='0';
+    document.querySelectorAll('.wa-tpl-btn').forEach(b=>b.classList.remove('active'));
+    const btn=document.getElementById('wa-send-btn'); btn.disabled=false;
+    btn.innerHTML='<svg viewBox="0 0 24 24" fill="currentColor" style="width:16px;height:16px;"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg> Envoyer';
+    openModal('whatsapp-modal');
+    setTimeout(()=>{ document.querySelector('.wa-tpl-btn').click(); document.getElementById('wa-message').focus(); },80);
+}
+async function openWhatsapp() {
+    const msg=document.getElementById('wa-message').value.trim();
+    const fb=document.getElementById('wa-feedback');
+    const btn=document.getElementById('wa-send-btn');
+    if(!msg){ fb.style.cssText='display:block;background:#fef3c7;color:#92400e;padding:.5rem .75rem;border-radius:8px;font-size:.82rem;'; fb.textContent='⚠️ Message vide.'; return; }
+    btn.disabled=true; fb.style.display='none';
+    try {
+        const fd=new FormData(); fd.append('message',msg);
+        const res=await fetch('/contacts/send-whatsapp/'+_waContactId,{method:'POST',body:fd});
+        const data=await res.json();
+        fb.style.display='block'; fb.style.padding='.5rem .75rem'; fb.style.borderRadius='8px'; fb.style.fontSize='.82rem';
+        if(data.ok){ fb.style.background='#dcfce7'; fb.style.color='#166534'; fb.textContent='Envoyé !'; btn.innerHTML='Envoyé'; setTimeout(()=>closeModal('whatsapp-modal'),2000); }
+        else{ fb.style.background='#fee2e2'; fb.style.color='#991b1b'; fb.textContent=data.msg; btn.disabled=false; }
+    } catch(e){ fb.style.display='block'; fb.style.background='#fee2e2'; fb.style.color='#991b1b'; fb.textContent='Erreur réseau'; btn.disabled=false; }
+}
+
+function showFeedback(el,ok,msg) {
+    el.textContent=msg;
+    el.style.cssText='display:block;padding:.5rem .85rem;border-radius:8px;font-size:.85rem;background:'+(ok?'var(--success-light)':'var(--danger-light)')+';color:'+(ok?'var(--success)':'var(--danger)')+';';
+}
+
+// ══════════════════════════════════════════
+// 🖨️ PRINT CONTACT SHEET
+// ══════════════════════════════════════════
+async function printContactSheet(id, name) {
+    try {
+        const res = await fetch('/contacts/print/' + id);
+        const c = await res.json();
+        const labels = (c.labels || []).map(l =>
+            `<span style="background:${l.color}20;color:${l.color};border:1px solid ${l.color}50;padding:.15rem .55rem;border-radius:20px;font-size:.8rem;font-weight:600;">${l.name}</span>`
+        ).join(' ');
+        const appts = (c.appointments || []).map(a =>
+            `<tr><td style="padding:.35rem .6rem;border-bottom:1px solid #eee;">${a.date}</td>
+             <td style="padding:.35rem .6rem;border-bottom:1px solid #eee;">${a.time_slot}</td>
+             <td style="padding:.35rem .6rem;border-bottom:1px solid #eee;">${a.title||'—'}</td></tr>`
+        ).join('');
+        document.getElementById('print-content').innerHTML = `
+            <div id="printable-sheet">
+                <div style="display:flex;align-items:center;gap:1rem;margin-bottom:1.5rem;padding-bottom:1rem;border-bottom:2px solid var(--primary);">
+                    <div style="width:56px;height:56px;border-radius:50%;background:var(--primary);color:#fff;display:flex;align-items:center;justify-content:center;font-size:1.6rem;font-weight:700;flex-shrink:0;">${(c.name||'?')[0].toUpperCase()}</div>
+                    <div>
+                        <div style="font-size:1.3rem;font-weight:700;color:var(--text);">${c.name}</div>
+                        <div style="color:var(--text-muted);font-size:.9rem;">${c.fonction||''}${c.fonction&&c.company?' · ':''}${c.company||''}</div>
+                    </div>
+                </div>
+                <table style="width:100%;border-collapse:collapse;font-size:.9rem;margin-bottom:1rem;">
+                    ${c.email?`<tr><td style="padding:.4rem .6rem;color:var(--text-muted);width:120px;">Email</td><td style="padding:.4rem .6rem;">${c.email}</td></tr>`:''}
+                    ${c.phone?`<tr><td style="padding:.4rem .6rem;color:var(--text-muted);">Téléphone</td><td style="padding:.4rem .6rem;">${c.phone}</td></tr>`:''}
+                    ${c.category?`<tr><td style="padding:.4rem .6rem;color:var(--text-muted);">Catégorie</td><td style="padding:.4rem .6rem;">${c.category}</td></tr>`:''}
+                    ${c.address?`<tr><td style="padding:.4rem .6rem;color:var(--text-muted);">Adresse</td><td style="padding:.4rem .6rem;">${c.address}</td></tr>`:''}
+                </table>
+                ${labels?`<div style="margin-bottom:1rem;display:flex;gap:.4rem;flex-wrap:wrap;">${labels}</div>`:''}
+                ${appts?`<div style="margin-top:1rem;"><strong style="font-size:.9rem;">Rendez-vous</strong>
+                    <table style="width:100%;border-collapse:collapse;font-size:.85rem;margin-top:.5rem;">
+                        <thead><tr style="background:var(--surface2);">
+                            <th style="padding:.4rem .6rem;text-align:left;font-weight:600;">Date</th>
+                            <th style="padding:.4rem .6rem;text-align:left;font-weight:600;">Heure</th>
+                            <th style="padding:.4rem .6rem;text-align:left;font-weight:600;">Objet</th>
+                        </tr></thead><tbody>${appts}</tbody>
+                    </table></div>`:''}
+                <div style="margin-top:1.5rem;padding-top:.75rem;border-top:1px solid var(--border);font-size:.75rem;color:var(--text-muted);text-align:right;">
+                    Imprimé le ${new Date().toLocaleDateString('fr-FR')} · Gestion de Contacts
+                </div>
+            </div>`;
+        openModal('print-modal');
+    } catch(e) {
+        showToast('Erreur lors du chargement de la fiche', true);
+    }
+}
+
+function doPrint() {
+    const el = document.getElementById('printable-sheet');
+    if (!el) return;
+    const w = window.open('', '_blank', 'width=700,height=900');
+    w.document.write(`<!DOCTYPE html><html><head><title>Fiche Contact</title>
+        <style>
+            body{font-family:sans-serif;color:#111;margin:2rem;}
+            table{width:100%;border-collapse:collapse;}
+            td,th{padding:.4rem .6rem;border-bottom:1px solid #e5e7eb;}
+            th{background:#f3f4f6;font-weight:600;}
+            @media print{body{margin:1cm;}}
+        </style></head><body>${el.innerHTML}</body></html>`);
+    w.document.close();
+    setTimeout(()=>w.print(), 400);
+}
+
+// ══════════════════════════════════════════
+// 📁 LABELS PANEL
+// ══════════════════════════════════════════
+let _labelSubView = null;
+
+async function openLabelsPanel() {
+    _labelSubView = null;
+    openModal('labels-panel-overlay');
+    const header = document.querySelector('#labels-panel-overlay .modal-header h2');
+    if (header) header.innerHTML = `<i data-lucide="tags" class="icon"></i> Gérer les étiquettes`;
+    lucide.createIcons();
+    await loadLabelsList();
+}
+
+async function loadLabelsList() {
+    const container = document.getElementById('labels-list');
+    container.innerHTML = '<div style="text-align:center;color:var(--text-muted);padding:1rem;">Chargement…</div>';
+    try {
+        const res    = await fetch('/labels');
+        const labels = await res.json();
+        if (!labels.length) {
+            container.innerHTML = '<div style="text-align:center;color:var(--text-muted);padding:1rem;">Aucune étiquette. Créez-en une !</div>';
+            return;
+        }
+        container.innerHTML = labels.map(l => `
+            <div style="display:flex;align-items:center;gap:.75rem;padding:.6rem .85rem;background:var(--surface2);border-radius:10px;border:1.5px solid var(--border);">
+                <span style="width:14px;height:14px;border-radius:50%;background:${l.color};flex-shrink:0;"></span>
+                <span style="flex:1;font-weight:600;color:var(--text);">${l.name}</span>
+                <span style="font-size:.8rem;color:var(--text-muted);">${l.contact_count} contact${l.contact_count!=1?'s':''}</span>
+                <button onclick="openAssignView(${l.id}, '${l.name.replace(/'/g, String.fromCharCode(92)+"'")}', '${l.color}')"
+                    title="Assigner des contacts"
+                    style="display:inline-flex;align-items:center;gap:.3rem;background:var(--primary-light);color:var(--primary);border:1.5px solid var(--primary);border-radius:7px;padding:.28rem .65rem;font-size:.78rem;font-weight:600;cursor:pointer;white-space:nowrap;">
+                    <i data-lucide="users" style="width:12px;height:12px;"></i> Gérer
+                </button>
+                <button onclick="deleteLabel(${l.id}, '${l.name.replace(/'/g, String.fromCharCode(92)+"'")}')"
+                    title="Supprimer"
+                    style="background:none;border:none;cursor:pointer;color:var(--danger);padding:.2rem;display:flex;align-items:center;">
+                    <i data-lucide="trash-2" style="width:14px;height:14px;"></i>
+                </button>
+            </div>`).join('');
+        lucide.createIcons();
+    } catch(e) {
+        container.innerHTML = '<div style="color:var(--danger);padding:.5rem;">Erreur de chargement.</div>';
+    }
+}
+
+async function openAssignView(labelId, labelName, labelColor) {
+    _labelSubView = labelId;
+    const container = document.getElementById('labels-list');
+    const header    = document.querySelector('#labels-panel-overlay .modal-header h2');
+    if (header) {
+        header.innerHTML = `
+            <button onclick="backToLabels()" title="Retour aux étiquettes"
+                style="background:none;border:none;cursor:pointer;color:#fff;margin-right:.4rem;display:inline-flex;align-items:center;padding:0;">
+                <i data-lucide="arrow-left" style="width:16px;height:16px;"></i>
+            </button>
+            <span style="width:11px;height:11px;border-radius:50%;background:${labelColor};display:inline-block;margin-right:.4rem;flex-shrink:0;"></span>
+            ${labelName}`;
+        lucide.createIcons();
+    }
+    container.innerHTML = '<div style="text-align:center;color:var(--text-muted);padding:1rem;">Chargement…</div>';
+    try {
+        const res      = await fetch(`/labels/${labelId}/contacts`);
+        const contacts = await res.json();
+        if (!contacts.length) {
+            container.innerHTML = `<div style="text-align:center;color:var(--text-muted);padding:1.5rem;">
+                Aucun contact dans votre carnet.<br>
+                <a href="/contacts" style="color:var(--primary);">Ajoutez des contacts d'abord</a></div>`;
+            return;
+        }
+        const assignedCount = contacts.filter(c => c.assigned).length;
+        container.innerHTML = `
+            <div style="display:flex;gap:.5rem;margin-bottom:.6rem;align-items:center;">
+                <input id="lbl-search" type="text" placeholder="Rechercher un contact…"
+                    oninput="filterAssignList(this.value)"
+                    style="flex:1;padding:.4rem .75rem;border:1.5px solid var(--border);border-radius:8px;
+                           background:var(--surface2);color:var(--text);font-size:.85rem;outline:none;">
+                <label style="display:flex;align-items:center;gap:.35rem;font-size:.82rem;font-weight:600;
+                              cursor:pointer;white-space:nowrap;color:var(--text);">
+                    <input type="checkbox" id="lbl-select-all"
+                        onchange="toggleLabelSelectAll(this.checked,'${labelColor}')"
+                        ${assignedCount === contacts.length ? 'checked' : ''}
+                        style="accent-color:${labelColor};width:15px;height:15px;cursor:pointer;">
+                    Tout
+                </label>
+            </div>
+            <div id="lbl-assign-list" style="display:flex;flex-direction:column;gap:.3rem;max-height:250px;overflow-y:auto;">
+                ${contacts.map(c => `
+                <label class="lbl-assign-row" data-name="${c.name.toLowerCase()}"
+                    style="display:flex;align-items:center;gap:.75rem;padding:.5rem .75rem;border-radius:9px;cursor:pointer;
+                           border:1.5px solid ${c.assigned ? labelColor + '66' : 'var(--border)'};
+                           background:${c.assigned ? labelColor + '18' : 'var(--surface2)'};
+                           transition:border-color .12s,background .12s;">
+                    <input type="checkbox" value="${c.id}" ${c.assigned ? 'checked' : ''}
+                        style="accent-color:${labelColor};width:16px;height:16px;flex-shrink:0;cursor:pointer;"
+                        onchange="onAssignCheck(this,'${labelColor}')">
+                    <div style="flex:1;min-width:0;">
+                        <div style="font-weight:600;font-size:.9rem;color:var(--text);
+                                    white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${c.name}</div>
+                        <div style="font-size:.75rem;color:var(--text-muted);
+                                    white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${c.email}</div>
+                    </div>
+                </label>`).join('')}
+            </div>
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-top:.85rem;gap:.5rem;flex-wrap:wrap;">
+                <span id="assign-count-label" style="font-size:.8rem;color:var(--text-muted);"></span>
+                <div style="display:flex;gap:.5rem;">
+                    <button onclick="backToLabels()" class="btn btn-secondary" style="font-size:.85rem;padding:.4rem .9rem;">
+                        Annuler
+                    </button>
+                    <button onclick="saveAssignments(${labelId},'${labelColor}')" class="btn btn-primary" style="font-size:.85rem;padding:.4rem .9rem;">
+                        <i data-lucide="check" style="width:13px;height:13px;"></i> Enregistrer
+                    </button>
+                </div>
+            </div>`;
+        updateAssignCount();
+        lucide.createIcons();
+    } catch(e) {
+        container.innerHTML = '<div style="color:var(--danger);padding:.5rem;">Erreur de chargement des contacts.</div>';
+    }
+}
+
+function onAssignCheck(chk, color) {
+    const row = chk.closest('.lbl-assign-row');
+    if (chk.checked) {
+        row.style.borderColor = color + '66';
+        row.style.background  = color + '18';
+    } else {
+        row.style.borderColor = 'var(--border)';
+        row.style.background  = 'var(--surface2)';
+    }
+    updateAssignCount();
+}
+
+function updateAssignCount() {
+    const all     = document.querySelectorAll('#lbl-assign-list input[type=checkbox]');
+    const checked = document.querySelectorAll('#lbl-assign-list input[type=checkbox]:checked');
+    const lbl = document.getElementById('assign-count-label');
+    if (lbl) lbl.textContent = `${checked.length} / ${all.length} contact${all.length!==1?'s':''} sélectionné${checked.length!==1?'s':''}`;
+    const sa = document.getElementById('lbl-select-all');
+    if (sa) sa.checked = all.length > 0 && checked.length === all.length;
+}
+
+function filterAssignList(q) {
+    document.querySelectorAll('.lbl-assign-row').forEach(row => {
+        row.style.display = row.dataset.name.includes(q.toLowerCase()) ? '' : 'none';
+    });
+    updateAssignCount();
+}
+
+function toggleLabelSelectAll(checked, color) {
+    document.querySelectorAll('#lbl-assign-list input[type=checkbox]').forEach(chk => {
+        chk.checked = checked;
+        onAssignCheck(chk, color);
+    });
+}
+
+async function saveAssignments(labelId, labelColor) {
+    const ids = [...document.querySelectorAll('#lbl-assign-list input[type=checkbox]:checked')]
+                    .map(chk => parseInt(chk.value));
+    try {
+        const res  = await fetch(`/labels/${labelId}/assign`, {
+            method:  'POST',
+            headers: {'Content-Type': 'application/json'},
+            body:    JSON.stringify({contact_ids: ids})
+        });
+        const data = await res.json();
+        if (data.ok) {
+            showLabelFeedback(true,
+                `✓ ${ids.length} contact${ids.length!==1?'s':''} assigné${ids.length!==1?'s':''} avec succès.`);
+            await backToLabels();
+        } else {
+            showLabelFeedback(false, data.msg || 'Erreur lors de l\'enregistrement.');
+        }
+    } catch(e) {
+        showLabelFeedback(false, 'Erreur réseau.');
+    }
+}
+
+async function backToLabels() {
+    _labelSubView = null;
+    const header = document.querySelector('#labels-panel-overlay .modal-header h2');
+    if (header) header.innerHTML = `<i data-lucide="tags" class="icon"></i> Gérer les étiquettes`;
+    lucide.createIcons();
+    await loadLabelsList();
+}
+
+async function createLabel() {
+    const name  = document.getElementById('new-label-name').value.trim();
+    const color = document.getElementById('new-label-color').value;
+    const fb    = document.getElementById('labels-panel-feedback');
+    if (!name) { showLabelFeedback(false, 'Nom requis.'); return; }
+    try {
+        const res = await fetch('/labels/add', {
+            method:'POST', headers:{'Content-Type':'application/json'},
+            body: JSON.stringify({name, color})
+        });
+        const data = await res.json();
+        if (data.ok) {
+            document.getElementById('new-label-name').value = '';
+            showLabelFeedback(true, data.msg);
+            await loadLabelsList();
+        } else {
+            showLabelFeedback(false, data.msg);
+        }
+    } catch(e) { showLabelFeedback(false, 'Erreur réseau.'); }
+}
+
+async function deleteLabel(id, name) {
+    if (!confirm(`Supprimer l'étiquette "${name}" ?`)) return;
+    try {
+        const res = await fetch('/labels/delete/'+id, {method:'POST'});
+        const data = await res.json();
+        if (data.ok) { showLabelFeedback(true, data.msg); await loadLabelsList(); }
+        else showLabelFeedback(false, data.msg);
+    } catch(e) { showLabelFeedback(false, 'Erreur réseau.'); }
+}
+
+function showLabelFeedback(ok, msg) {
+    const fb = document.getElementById('labels-panel-feedback');
+    fb.textContent = msg;
+    fb.style.cssText = `display:block;padding:.4rem .75rem;border-radius:8px;font-size:.85rem;
+        background:${ok?'#dcfce7':'#fee2e2'};color:${ok?'#166534':'#991b1b'};`;
+    setTimeout(()=>fb.style.display='none', 3000);
+}
+
+// ── Page-specific i18n ──
+function applyPageTranslations() {
+    const sp=document.getElementById('search-input');
+    if(sp) sp.placeholder=t('search_placeholder');
+}
+
+const initQ=document.getElementById('search-input')?.value;
+if(initQ) filterContacts(initQ);
+
+// ===== TABLE SORTING =====
+let _sortCol = null;
+let _sortDir = 1; // 1=asc, -1=desc
+
+function sortTable(col) {
+    if (_sortCol === col) {
+        _sortDir *= -1;
+    } else {
+        _sortCol = col;
+        _sortDir = 1;
+    }
+    // Update sort icons
+    ['name','email','phone'].forEach(c => {
+        const icon = document.getElementById('sort-icon-' + c);
+        if (!icon) return;
+        if (c === col) {
+            icon.textContent = _sortDir === 1 ? '↑' : '↓';
+            icon.style.color = 'var(--primary)';
+            icon.style.opacity = '1';
+        } else {
+            icon.textContent = '↕';
+            icon.style.color = '';
+            icon.style.opacity = '0.35';
+        }
+    });
+    const tbody = document.getElementById('contacts-tbody');
+    if (!tbody) return;
+    const rows = Array.from(tbody.querySelectorAll('tr'));
+    rows.sort((a, b) => {
+        let aVal = '', bVal = '';
+        if (col === 'name')  { aVal = (a.dataset.name  || '').trim(); bVal = (b.dataset.name  || '').trim(); }
+        if (col === 'email') { aVal = (a.dataset.email || '').trim(); bVal = (b.dataset.email || '').trim(); }
+        if (col === 'phone') { aVal = (a.dataset.phone || '').replace(/\D/g,''); bVal = (b.dataset.phone || '').replace(/\D/g,''); }
+        if (aVal < bVal) return -1 * _sortDir;
+        if (aVal > bVal) return  1 * _sortDir;
+        return 0;
+    });
+    rows.forEach(r => tbody.appendChild(r));
+    // Re-number the # column
+    rows.forEach((r, i) => {
+        const idCell = r.querySelector('.id-cell');
+        if (idCell) idCell.textContent = i + 1;
+    });
+}
+
+// Extra styles
+document.head.insertAdjacentHTML('beforeend',`<style>
+.wa-template-section{margin-bottom:1rem;}
+.tpl-icon{font-size:.9rem;display:block;margin-bottom:.15rem;}
+.wa-tpl-grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:.4rem;margin-bottom:.75rem;}
+.wa-tpl-btn{border:1.5px solid var(--border);background:var(--surface2);border-radius:8px;padding:.4rem .5rem;font-size:.72rem;cursor:pointer;text-align:left;transition:all .15s;line-height:1.3;color:var(--text);}
+.wa-tpl-btn:hover{border-color:#25D366;background:#f0fdf4;color:#15803d;}
+.wa-tpl-btn.active{border-color:#25D366;background:#dcfce7;color:#15803d;font-weight:600;}
+.bulk-bar{display:none;align-items:center;gap:.75rem;padding:.6rem 1rem;background:var(--primary-light);border:1.5px solid var(--primary);border-radius:10px;margin-bottom:.75rem;}
+.bulk-bar.visible{display:flex;}
+.bulk-count{font-size:.88rem;font-weight:600;color:var(--primary);flex:1;}
+.labels-cell{max-width:160px;}
+.page-actions{padding-bottom:.75rem;}
+.th-sortable{white-space:nowrap;}
+.th-sortable:hover{background:var(--primary-light,rgba(99,102,241,.08));color:var(--primary);}
+.sort-icon{font-size:.75rem;opacity:.35;margin-left:.25rem;transition:opacity .15s,color .15s;}
+.lbl-badge{display:inline-block;padding:.15rem .5rem;border-radius:20px;font-size:.72rem;font-weight:600;margin:.1rem;}
+.label-picker{display:flex;flex-wrap:wrap;gap:.4rem;margin-top:.3rem;}
+.lbl-check-item{display:inline-flex;align-items:center;cursor:pointer;}
+.lbl-check-item input[type=checkbox]{display:none;}
+.lbl-chip{padding:.25rem .65rem;border-radius:20px;font-size:.8rem;font-weight:600;cursor:pointer;transition:opacity .15s;}
+.lbl-check-item input:checked+.lbl-chip{box-shadow:0 0 0 2px currentColor;}
+.btn-print{color:var(--text-muted);background:var(--surface2);}
+.btn-print:hover{color:var(--primary);background:var(--primary-light);}
+</style>`);
+</script>
+{% endblock %}
