@@ -4,7 +4,10 @@ from database.db import get_connection
 
 CATEGORIES = ["Patient", "Fournisseur", "Laboratoire", "Client", "Autre"]
 
+<<<<<<< HEAD
 
+=======
+>>>>>>> 0775f6f3439142a094b03eb2f2a4da54fcb7f3fe
 class ContactService:
 
     def get_all_contacts(self):
@@ -51,7 +54,11 @@ class ContactService:
         # Check phone — normalize by stripping spaces/dashes for comparison
         norm_phone = phone.strip().replace(" ", "").replace("-", "")
         cursor.execute("SELECT id, name, phone FROM contacts" + (" WHERE id != ?" if exclude_id else ""),
+<<<<<<< HEAD
                     (exclude_id,) if exclude_id else ())
+=======
+                       (exclude_id,) if exclude_id else ())
+>>>>>>> 0775f6f3439142a094b03eb2f2a4da54fcb7f3fe
         for r in cursor.fetchall():
             existing_norm = (r["phone"] or "").replace(" ", "").replace("-", "")
             if existing_norm == norm_phone:
@@ -133,5 +140,9 @@ class ContactService:
         writer.writerow(["ID", "Name", "Email", "Phone", "Category", "Company", "Function", "Address"])
         for c in contacts:
             writer.writerow([c["id"], c["name"], c["email"], c["phone"],
+<<<<<<< HEAD
                             c.get("category",""), c.get("company",""), c.get("fonction",""), c.get("address","")])
+=======
+                             c.get("category",""), c.get("company",""), c.get("fonction",""), c.get("address","")])
+>>>>>>> 0775f6f3439142a094b03eb2f2a4da54fcb7f3fe
         return output.getvalue()

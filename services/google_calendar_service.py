@@ -55,7 +55,11 @@ class GoogleCalendarService:
             "grant_type":    "authorization_code",
         }).encode()
         req = urllib.request.Request(TOKEN_URL, data=data,
+<<<<<<< HEAD
                                     headers={"Content-Type": "application/x-www-form-urlencoded"})
+=======
+                                     headers={"Content-Type": "application/x-www-form-urlencoded"})
+>>>>>>> 0775f6f3439142a094b03eb2f2a4da54fcb7f3fe
         try:
             with urllib.request.urlopen(req) as resp:
                 return True, json.loads(resp.read())
@@ -70,7 +74,11 @@ class GoogleCalendarService:
             "grant_type":    "refresh_token",
         }).encode()
         req = urllib.request.Request(TOKEN_URL, data=data,
+<<<<<<< HEAD
                                     headers={"Content-Type": "application/x-www-form-urlencoded"})
+=======
+                                     headers={"Content-Type": "application/x-www-form-urlencoded"})
+>>>>>>> 0775f6f3439142a094b03eb2f2a4da54fcb7f3fe
         try:
             with urllib.request.urlopen(req) as resp:
                 return True, json.loads(resp.read())
@@ -81,10 +89,17 @@ class GoogleCalendarService:
         url = CALENDAR_API + path
         data = json.dumps(body).encode() if body else None
         req = urllib.request.Request(url, data=data, method=method,
+<<<<<<< HEAD
                                     headers={
                                         "Authorization": "Bearer " + access_token,
                                         "Content-Type": "application/json",
                                     })
+=======
+                                     headers={
+                                         "Authorization": "Bearer " + access_token,
+                                         "Content-Type": "application/json",
+                                     })
+>>>>>>> 0775f6f3439142a094b03eb2f2a4da54fcb7f3fe
         try:
             with urllib.request.urlopen(req) as resp:
                 return True, json.loads(resp.read())
